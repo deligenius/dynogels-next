@@ -7,13 +7,9 @@
     {
       "type": "node",
       "request": "launch",
-      "name": "Debug Node",
+      "name": "Debug Current File",
+      "runtimeExecutable": "tsx",
       "args": ["${relativeFile}"],
-      "runtimeArgs": [
-        "--no-warnings=ExperimentalWarning",
-        "--loader",
-        "ts-node/esm"
-      ],
       "sourceMaps": true,
       "cwd": "${workspaceFolder}",
       "skipFiles": [

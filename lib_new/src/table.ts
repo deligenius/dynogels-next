@@ -1,12 +1,24 @@
-import type { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocument } from "@aws-sdk/lib-dynamodb";
-import { string, type z } from "zod";
+import {
+	CreateTableCommand,
+	type ScalarAttributeType,
+	type DynamoDBClient,
+	ResourceInUseException,
+	DeleteTableCommand,
+	ResourceNotFoundException,
+	type DeleteTableCommandOutput,
+	type CreateTableCommandOutput,
+} from "@aws-sdk/client-dynamodb";
+import {
+	type DeleteCommandOutput,
+	DynamoDBDocument,
+} from "@aws-sdk/lib-dynamodb";
+import { z } from "zod";
 
-interface TableOptions {
+interface TableOptions<T extends z.ZodObject<any>> {
 	hashKey: string;
 	rangeKey?: string;
 	timestamps?: boolean;
-	schema: z.ZodType;
+	schema: T;
 	validation?: {
 		allowUnknown?: boolean;
 	};
@@ -16,10 +28,10 @@ interface TableOptions {
 type ModelKey<
 	ItemType,
 	HKName extends keyof ItemType,
-	RKName extends keyof ItemType | never,
-> = { [P in HKName]: ItemType[P] } & (RKName extends never
-	? never
-	: { [P in RKName]: ItemType[P] });
+	RKName extends keyof ItemType | undefined,
+> = { [P in HKName]: ItemType[P] } & (RKName extends keyof ItemType
+	? Partial<{ [P in RKName]: ItemType[P] }>
+	: unknown);
 
 // biome-ignore lint/complexity/noStaticOnlyClass: <explanation>
 export class Dynogels {
@@ -31,22 +43,26 @@ export class Dynogels {
 		Dynogels.client = DynamoDBDocument.from(client);
 	}
 
-	static define<const O extends TableOptions>(tableName: string, options: O) {
+	static define<const O extends TableOptions<any>>(
+		tableName: string,
+		options: O,
+	) {
 		return new Model<O>(Dynogels.client, options.schema, tableName, options);
 	}
 }
 
 class Model<
-	O extends TableOptions,
+	O extends TableOptions<any>,
 	InferredType extends z.infer<O["schema"]> = z.infer<O["schema"]>,
 	HashKey extends O["hashKey"] = O["hashKey"],
-	RangeKey extends O["rangeKey"] extends string
-		? O["rangeKey"]
-		: never = O["rangeKey"] extends string ? O["rangeKey"] : never,
+	RangeKey extends O["rangeKey"] = O["rangeKey"],
 > {
+	// @ts-ignore
+	public type: InferredType;
+
 	constructor(
 		private client: DynamoDBDocument,
-		private schema: O["schema"],
+		public schema: O["schema"],
 		private tableName: string,
 		private options: O,
 	) {}
@@ -63,16 +79,17 @@ class Model<
 			}),
 		};
 
-		const result = await this.client.put({
+		await this.client.put({
 			TableName: this.tableName,
 			Item: itemToSave,
 		});
-		console.log(result);
 
 		return validatedItem;
 	}
 
-	async get(key: ModelKey<InferredType, HashKey, RangeKey>) {
+	async get(
+		key: ModelKey<InferredType, HashKey, RangeKey>,
+	): Promise<InferredType | null> {
 		const result = await this.client.get({
 			TableName: this.tableName,
 			Key: key,
@@ -85,7 +102,7 @@ class Model<
 	async update(
 		key: ModelKey<InferredType, HashKey, RangeKey>,
 		updates: Partial<InferredType>,
-	) {
+	): Promise<InferredType> {
 		const currentItem = await this.get(key);
 		if (!currentItem) {
 			throw new Error("Item not found");
@@ -109,10 +126,133 @@ class Model<
 		return validatedItem;
 	}
 
-	async destroy(key: ModelKey<InferredType, HashKey, RangeKey>) {
-		await this.client.delete({
+	async destroy(
+		key: ModelKey<InferredType, HashKey, RangeKey>,
+	): Promise<DeleteCommandOutput> {
+		const result = await this.client.delete({
 			TableName: this.tableName,
 			Key: key,
 		});
+
+		return result;
+	}
+
+	async createTable(): Promise<CreateTableCommandOutput | undefined> {
+		function getAttrType(shape: z.ZodType<any>) {
+			if (shape instanceof z.ZodString) {
+				return "S";
+			}
+			if (shape instanceof z.ZodNumber) {
+				return "N";
+			}
+			if (shape instanceof z.ZodArray) {
+				return "B"; // Uint8Array
+			}
+			throw new Error("Unsupported Hashkey/Rangekey type");
+		}
+
+		const hashKeyType = getAttrType(
+			this.options.schema.shape[this.options.hashKey],
+		);
+		let rangeKeyType: ScalarAttributeType | undefined;
+		if (this.options.rangeKey) {
+			rangeKeyType = getAttrType(
+				this.options.schema.shape[this.options.rangeKey],
+			);
+		}
+
+		// depends on hashKeyType and rangeKeyType, create table use client
+		const command = new CreateTableCommand({
+			TableName: this.tableName,
+			KeySchema: [
+				{
+					AttributeName: this.options.hashKey,
+					KeyType: "HASH",
+				},
+				...(this.options.rangeKey
+					? [
+							{
+								AttributeName: this.options.rangeKey,
+								KeyType: "RANGE",
+							} as const,
+						]
+					: []),
+			],
+			AttributeDefinitions: [
+				{
+					AttributeName: this.options.hashKey,
+					AttributeType: hashKeyType,
+				},
+				...(this.options.rangeKey
+					? [
+							{
+								AttributeName: this.options.rangeKey,
+								AttributeType: rangeKeyType,
+							},
+						]
+					: []),
+			],
+			ProvisionedThroughput: {
+				ReadCapacityUnits: 1,
+				WriteCapacityUnits: 1,
+			},
+		});
+		try {
+			const table = await this.client.send(command);
+			return table;
+		} catch (err) {
+			if (err instanceof ResourceInUseException) {
+				console.error(`Table ${this.tableName} already exists`);
+			} else {
+				console.error("Create table failed", err);
+			}
+			return undefined;
+		}
+	}
+	async deleteTable(): Promise<DeleteTableCommandOutput | undefined> {
+		const command = new DeleteTableCommand({
+			TableName: this.tableName,
+		});
+		try {
+			const table = await this.client.send(command);
+			return table;
+		} catch (err) {
+			if (err instanceof ResourceNotFoundException) {
+				console.error(`Table ${this.tableName} does not exist`);
+			} else {
+				console.error("Delete table failed", err);
+			}
+			return undefined;
+		}
+	}
+
+	async query(indexName: string, keys: Record<string, string>) {
+		const {
+			UpdateExpressions,
+			ExpressionAttributeNames,
+			ExpressionAttributeValues,
+		} = Object.entries(keys).reduce(
+			(acc, [key, value], index) => {
+				acc.UpdateExpressions.push(`#key${index} = :value${index}`);
+				acc.ExpressionAttributeNames[`#key${index}`] = key;
+				acc.ExpressionAttributeValues[`:value${index}`] = value;
+				return acc;
+			},
+			{
+				UpdateExpressions: [] as string[],
+				ExpressionAttributeNames: {} as Record<string, string>,
+				ExpressionAttributeValues: {} as Record<string, any>,
+			},
+		);
+
+		const result = await this.client.query({
+			TableName: this.tableName,
+			IndexName: indexName,
+			KeyConditionExpression: UpdateExpressions.join(" AND "),
+			ExpressionAttributeNames,
+			ExpressionAttributeValues,
+		});
+
+		return result.Items;
 	}
 }
