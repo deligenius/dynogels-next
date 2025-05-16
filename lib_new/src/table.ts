@@ -1,216 +1,118 @@
-import {
-  DynamoDB,
-  ProvisionedThroughput,
-  LocalSecondaryIndex,
-  GlobalSecondaryIndex,
-  BillingMode,
-  OnDemandThroughput,
-  ResourceInUseException,
-} from "@aws-sdk/client-dynamodb";
-import {
-  DynamoDBDocument,
-  NumberValue,
-  NativeAttributeBinary,
-} from "@aws-sdk/lib-dynamodb"; // ES6 import
+import type { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocument } from "@aws-sdk/lib-dynamodb";
+import { string, type z } from "zod";
 
-type Key = {
-  hashKey: string;
-  rangeKey?: string;
-};
+interface TableOptions {
+	hashKey: string;
+	rangeKey?: string;
+	timestamps?: boolean;
+	schema: z.ZodType;
+	validation?: {
+		allowUnknown?: boolean;
+	};
+}
 
-type TableConfig = {
-  tableName: string;
-  hashKey: string;
-  rangeKey?: string;
-  provisionedThroughput: ProvisionedThroughput;
-  onDemandThroughput?: OnDemandThroughput;
-  localSecondaryIndexes?: LocalSecondaryIndex[];
-  globalSecondaryIndexes?: GlobalSecondaryIndex[];
-  billineMode?: BillingMode;
-};
+// Utility type for primary key objects
+type ModelKey<
+	ItemType,
+	HKName extends keyof ItemType,
+	RKName extends keyof ItemType | never,
+> = { [P in HKName]: ItemType[P] } & (RKName extends never
+	? never
+	: { [P in RKName]: ItemType[P] });
 
-export class Table {
-  private readonly client: DynamoDBDocument;
-  constructor(
-    private readonly ddb: DynamoDB,
-    private readonly config: TableConfig
-  ) {
-    this.ddb = ddb;
-    this.client = DynamoDBDocument.from(ddb);
+// biome-ignore lint/complexity/noStaticOnlyClass: <explanation>
+export class Dynogels {
+	private static client: DynamoDBDocument;
+	private static ddbClient: DynamoDBClient;
 
-    this.config = config;
-  }
+	static initialize(client: DynamoDBClient) {
+		Dynogels.ddbClient = client;
+		Dynogels.client = DynamoDBDocument.from(client);
+	}
 
-  async createTable() {
-    const {
-      hashKey,
-      rangeKey,
-      provisionedThroughput,
-      localSecondaryIndexes,
-      globalSecondaryIndexes,
-      onDemandThroughput,
-      tableName,
-    } = this.config;
+	static define<const O extends TableOptions>(tableName: string, options: O) {
+		return new Model<O>(Dynogels.client, options.schema, tableName, options);
+	}
+}
 
-    try {
-      const table = await this.ddb.createTable({
-        TableName: tableName,
-        KeySchema: [
-          {
-            AttributeName: hashKey,
-            KeyType: "HASH",
-          },
-          ...(rangeKey
-            ? [{ AttributeName: rangeKey, KeyType: "RANGE" } as const]
-            : []),
-        ],
-        AttributeDefinitions: [
-          {
-            AttributeName: hashKey,
-            AttributeType: "S",
-          },
-          ...(rangeKey
-            ? [{ AttributeName: rangeKey, AttributeType: "S" } as const]
-            : []),
-        ],
-        ProvisionedThroughput: provisionedThroughput,
-        LocalSecondaryIndexes: localSecondaryIndexes,
-        GlobalSecondaryIndexes: globalSecondaryIndexes,
-        OnDemandThroughput: onDemandThroughput,
-      });
-      return table.TableDescription;
-    } catch (err) {
-      if (err instanceof ResourceInUseException) {
-        console.warn(`Table ${tableName} already exists`);
-      }
-    } finally {
-      return undefined;
-    }
-  }
+class Model<
+	O extends TableOptions,
+	InferredType extends z.infer<O["schema"]> = z.infer<O["schema"]>,
+	HashKey extends O["hashKey"] = O["hashKey"],
+	RangeKey extends O["rangeKey"] extends string
+		? O["rangeKey"]
+		: never = O["rangeKey"] extends string ? O["rangeKey"] : never,
+> {
+	constructor(
+		private client: DynamoDBDocument,
+		private schema: O["schema"],
+		private tableName: string,
+		private options: O,
+	) {}
 
-  async deleteTable() {
-    const table = await this.ddb.deleteTable({
-      TableName: this.config.tableName,
-    });
-    return table.TableDescription;
-  }
+	async create(item: InferredType): Promise<InferredType> {
+		const validatedItem = this.schema.parse(item);
+		const timestamp = new Date().toISOString();
 
-  async updateTable(
-    config: Omit<
-      TableConfig,
-      "tableName" | "hashKey" | "rangeKey" | "provisionedThroughput"
-    >
-  ) {
-    const table = await this.ddb.updateTable({
-      TableName: this.config.tableName,
-      ...config,
-    });
-    return table.TableDescription;
-  }
+		const itemToSave = {
+			...validatedItem,
+			...(this.options.timestamps && {
+				createdAt: timestamp,
+				updatedAt: timestamp,
+			}),
+		};
 
-  async get(key: Key) {
-    const { hashKey, rangeKey } = key;
-    const item = await this.client.get({
-      TableName: this.config.tableName,
-      Key: {
-        [this.config.hashKey]: hashKey,
-        // add range key if it exists
-        ...(this.config.rangeKey && { [this.config.rangeKey]: rangeKey }),
-      },
-    });
-    return item.Item;
-  }
+		const result = await this.client.put({
+			TableName: this.tableName,
+			Item: itemToSave,
+		});
+		console.log(result);
 
-  async put(key: Key, value: object) {
-    const { hashKey, rangeKey } = key;
+		return validatedItem;
+	}
 
-    const item = await this.client.put({
-      TableName: this.config.tableName,
-      Item: {
-        [this.config.hashKey]: hashKey,
-        // add range key if it exists
-        ...(this.config.rangeKey && { [this.config.rangeKey]: rangeKey }),
-        ...value,
-      },
-      // ReturnValues: "ALL_OLD", // since put item command replace the entire item, we don't need to return the old item
-    });
-    // return the new item
-    return this.get(key);
-  }
+	async get(key: ModelKey<InferredType, HashKey, RangeKey>) {
+		const result = await this.client.get({
+			TableName: this.tableName,
+			Key: key,
+		});
 
-  async update(key: Key, attributes: Record<string, any>) {
-    const { hashKey, rangeKey } = key;
+		if (!result.Item) return null;
+		return this.options.schema.parse(result.Item);
+	}
 
-    // generate update expression
-    const expression = Object.keys(attributes).reduce(
-      (acc, key, index) => {
-        acc.UpdateExpressions.push(`#key${index} = :value${index}`);
-        acc.ExpressionAttributeNames[`#key${index}`] = key;
-        acc.ExpressionAttributeValues[`:value${index}`] = attributes[key];
-        return acc;
-      },
-      {
-        UpdateExpressions: [] as string[],
-        ExpressionAttributeNames: {} as Record<string, string>,
-        ExpressionAttributeValues: {} as Record<string, any>,
-      }
-    );
+	async update(
+		key: ModelKey<InferredType, HashKey, RangeKey>,
+		updates: Partial<InferredType>,
+	) {
+		const currentItem = await this.get(key);
+		if (!currentItem) {
+			throw new Error("Item not found");
+		}
 
-    const item = await this.client.update({
-      TableName: this.config.tableName,
-      Key: {
-        [this.config.hashKey]: hashKey,
-        // add range key if it exists
-        ...(this.config.rangeKey && { [this.config.rangeKey]: rangeKey }),
-      },
-      UpdateExpression: `SET ` + expression.UpdateExpressions.join(", "),
-      ExpressionAttributeNames: expression.ExpressionAttributeNames,
-      ExpressionAttributeValues: expression.ExpressionAttributeValues,
-      ReturnValues: "ALL_NEW",
-    });
+		const updatedItem = {
+			...currentItem,
+			...updates,
+			...(this.options.timestamps && {
+				updatedAt: new Date().toISOString(),
+			}),
+		};
 
-    return item.Attributes;
-  }
+		const validatedItem = this.options.schema.parse(updatedItem);
 
-  async delete(key: Key) {
-    const { hashKey, rangeKey } = key;
-    const item = await this.client.delete({
-      TableName: this.config.tableName,
-      Key: {
-        [this.config.hashKey]: hashKey,
-        ...(this.config.rangeKey && { [this.config.rangeKey]: rangeKey }),
-      },
-      ReturnValues: "ALL_OLD",
-    });
-    return item.Attributes;
-  }
+		await this.client.put({
+			TableName: this.tableName,
+			Item: validatedItem,
+		});
 
-  // TODO: add more conditions
-  async scan() {
-    const items = await this.client.scan({
-      TableName: this.config.tableName,
-    });
-    return items.Items;
-  }
+		return validatedItem;
+	}
 
-  // TODO: add more conditions
-  async query(key: Key & { indexName?: string }, conditions?: object) {
-    const { hashKey, rangeKey, indexName } = key;
-
-    const items = await this.client.query({
-      TableName: this.config.tableName,
-      IndexName: indexName,
-      KeyConditionExpression:
-        `#hashKey = :hashKey ` + (rangeKey ? `AND #rangeKey = :rangeKey` : ""),
-      ExpressionAttributeNames: {
-        "#hashKey": this.config.hashKey,
-        ...(rangeKey && { "#rangeKey": this.config.rangeKey }),
-      },
-      ExpressionAttributeValues: {
-        ":hashKey": hashKey,
-        ...(rangeKey && { ":rangeKey": rangeKey }),
-      },
-    });
-    return items.Items;
-  }
+	async destroy(key: ModelKey<InferredType, HashKey, RangeKey>) {
+		await this.client.delete({
+			TableName: this.tableName,
+			Key: key,
+		});
+	}
 }
