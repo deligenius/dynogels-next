@@ -1,6 +1,71 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import dynogels, { types } from '../../index.js';
+import dynogels, { types, type ModelStatic, type ModelInstance } from '../../index.js';
+
+// Define schema types
+type UserSchema = z.infer<typeof userSchemaDefinition>;
+type BlogPostSchema = z.infer<typeof blogPostSchemaDefinition>;
+type CommentSchema = z.infer<typeof commentSchemaDefinition>;
+type ProductSchema = z.infer<typeof productSchemaDefinition>;
+
+// Schema definitions
+const userSchemaDefinition = z.object({
+  id: types.uuid(),
+  email: z.string().email(),
+  name: z.string(),
+  age: z.number().min(0).max(150).optional(),
+  roles: types.stringSet().optional(),
+  settings: z.object({
+    theme: z.enum(['light', 'dark']).default('light'),
+    notifications: z.boolean().default(true),
+    language: z.string().default('en'),
+  }).optional(),
+  metadata: z.record(z.any()).optional(),
+  tags: types.stringSet().optional(),
+  score: z.number().default(0),
+});
+
+const blogPostSchemaDefinition = z.object({
+  authorId: z.string(),
+  postId: types.uuid(),
+  title: z.string(),
+  content: z.string(),
+  published: z.boolean().default(false),
+  tags: types.stringSet().optional(),
+  views: z.number().default(0),
+  likes: z.number().default(0),
+  category: z.string().optional(),
+  metadata: z.record(z.any()).optional(),
+});
+
+const commentSchemaDefinition = z.object({
+  postId: z.string(),
+  commentId: types.uuid(),
+  authorId: z.string(),
+  content: z.string(),
+  approved: z.boolean().default(false),
+  parentCommentId: z.string().optional(),
+  likes: z.number().default(0),
+});
+
+const productSchemaDefinition = z.object({
+  productId: types.uuid(),
+  name: z.string(),
+  description: z.string().optional(),
+  price: z.number(),
+  category: z.string(),
+  tags: types.stringSet().optional(),
+  inStock: z.boolean().default(true),
+  stockCount: z.number().default(0),
+  ratings: z.array(z.number().min(1).max(5)).optional(),
+  averageRating: z.number().optional(),
+  manufacturer: z.object({
+    name: z.string().optional(),
+    country: z.string().optional(),
+    website: z.string().url().optional(),
+  }).optional(),
+  specifications: z.record(z.any()).optional(),
+});
 
 // Configure for local DynamoDB (matching the original test)
 dynogels.AWS.config.update({
@@ -11,49 +76,28 @@ dynogels.AWS.config.update({
 });
 
 describe('Local DynamoDB Integration Tests', () => {
-  let User: any, BlogPost: any, Comment: any, Product: any;
-  let testUser: any; // Global test user for error handling tests
-  let testAuthor: any, testPosts: any[] = []; // Global variables for comment tests
+  let User: ModelStatic<UserSchema>;
+  let BlogPost: ModelStatic<BlogPostSchema>;
+  let Comment: ModelStatic<CommentSchema>;
+  let Product: ModelStatic<ProductSchema>;
+  let testUser: ModelInstance<UserSchema> | null = null; // Global test user for error handling tests
+  let testAuthor: ModelInstance<UserSchema>;
+  let testPosts: ModelInstance<BlogPostSchema>[] = []; // Global variables for comment tests
 
   beforeAll(() => {
     // Define User model
     User = dynogels.define('LocalTestUser', {
       hashKey: 'id',
       timestamps: true,
-      schema: z.object({
-        id: types.uuid(),
-        email: z.string().email(),
-        name: z.string(),
-        age: z.number().min(0).max(150).optional(),
-        roles: types.stringSet().optional(),
-        settings: z.object({
-          theme: z.enum(['light', 'dark']).default('light'),
-          notifications: z.boolean().default(true),
-          language: z.string().default('en'),
-        }).optional(),
-        metadata: z.record(z.any()).optional(),
-        tags: types.stringSet().optional(),
-        score: z.number().default(0),
-      }),
-    });
+      schema: userSchemaDefinition,
+    }) as ModelStatic<UserSchema>;
 
     // Define BlogPost model with hash and range key
     BlogPost = dynogels.define('LocalTestBlogPost', {
       hashKey: 'authorId',
       rangeKey: 'postId',
       timestamps: true,
-      schema: z.object({
-        authorId: z.string(),
-        postId: types.uuid(),
-        title: z.string(),
-        content: z.string(),
-        published: z.boolean().default(false),
-        tags: types.stringSet().optional(),
-        views: z.number().default(0),
-        likes: z.number().default(0),
-        category: z.string().optional(),
-        metadata: z.record(z.any()).optional(),
-      }),
+      schema: blogPostSchemaDefinition,
       indexes: [
         {
           hashKey: 'category',
@@ -62,47 +106,22 @@ describe('Local DynamoDB Integration Tests', () => {
           type: 'global',
         },
       ],
-    });
+    }) as ModelStatic<BlogPostSchema>;
 
     // Define Comment model
     Comment = dynogels.define('LocalTestComment', {
       hashKey: 'postId',
       rangeKey: 'commentId',
       timestamps: true,
-      schema: z.object({
-        postId: z.string(),
-        commentId: types.uuid(),
-        authorId: z.string(),
-        content: z.string(),
-        approved: z.boolean().default(false),
-        parentCommentId: z.string().optional(),
-        likes: z.number().default(0),
-      }),
-    });
+      schema: commentSchemaDefinition,
+    }) as ModelStatic<CommentSchema>;
 
     // Define Product model for testing complex operations
     Product = dynogels.define('LocalTestProduct', {
       hashKey: 'productId',
       timestamps: true,
-      schema: z.object({
-        productId: types.uuid(),
-        name: z.string(),
-        description: z.string().optional(),
-        price: z.number(),
-        category: z.string(),
-        tags: types.stringSet().optional(),
-        inStock: z.boolean().default(true),
-        stockCount: z.number().default(0),
-        ratings: z.array(z.number().min(1).max(5)).optional(),
-        averageRating: z.number().optional(),
-        manufacturer: z.object({
-          name: z.string().optional(),
-          country: z.string().optional(),
-          website: z.string().url().optional(),
-        }).optional(),
-        specifications: z.record(z.any()).optional(),
-      }),
-    });
+      schema: productSchemaDefinition,
+    }) as ModelStatic<ProductSchema>;
   });
 
   describe('Table Management', () => {
@@ -156,13 +175,13 @@ describe('Local DynamoDB Integration Tests', () => {
       };
 
       const user = await User.create(userData);
-      
+
       expect(user).toBeDefined();
       expect(user.get('email')).toBe('test@example.com');
       expect(user.get('name')).toBe('Test User');
       expect(user.get('roles')).toContain('admin');
       expect(user.get('settings').theme).toBe('dark');
-      
+
       // Timestamps should exist when enabled
       expect(user.get('createdAt')).toBeDefined();
       const createdAt = user.get('createdAt');
@@ -175,7 +194,7 @@ describe('Local DynamoDB Integration Tests', () => {
       if (!testUser) {
         throw new Error('No test user created in previous test');
       }
-      
+
       const user = await User.get(testUser.get('id'));
       expect(user).toBeDefined();
       expect(user!.get('email')).toBe('test@example.com');
@@ -187,7 +206,7 @@ describe('Local DynamoDB Integration Tests', () => {
       if (!testUser) {
         throw new Error('No test user created in previous test');
       }
-      
+
       const user = await User.get(testUser.get('id'), { ConsistentRead: true });
       expect(user).toBeDefined();
 
@@ -272,7 +291,7 @@ describe('Local DynamoDB Integration Tests', () => {
       const createdPosts = await Promise.all(
         posts.map(post => BlogPost.create(post))
       );
-      
+
       expect(createdPosts).toHaveLength(3);
 
       createdPosts.forEach((post: any, index: number) => {
@@ -297,7 +316,7 @@ describe('Local DynamoDB Integration Tests', () => {
         .filter('published')
         .equals(true)
         .exec();
-      
+
       expect(posts.Items).toHaveLength(2);
       posts.Items.forEach((post: any) => {
         expect(post.get('published')).toBe(true);
@@ -309,7 +328,7 @@ describe('Local DynamoDB Integration Tests', () => {
         .limit(2)
         .descending()
         .exec();
-      
+
       expect(posts.Items).toHaveLength(2);
     });
 
@@ -320,7 +339,7 @@ describe('Local DynamoDB Integration Tests', () => {
         testAuthor.get('id'),
         firstPost.get('postId')
       );
-      
+
       expect(post).toBeDefined();
       expect(post!.get('title')).toBe('First Blog Post');
       expect(post!.get('authorId')).toBe(testAuthor.get('id'));
@@ -340,7 +359,7 @@ describe('Local DynamoDB Integration Tests', () => {
           views: { $add: 10 },
         }
       );
-      
+
       expect(updatedPost.get('title')).toBe('Updated First Blog Post');
       expect(updatedPost.get('views')).toBe(10);
     });
@@ -381,7 +400,7 @@ describe('Local DynamoDB Integration Tests', () => {
       const createdComments = await Promise.all(
         comments.map(comment => Comment.create(comment))
       );
-      
+
       expect(createdComments).toHaveLength(3);
 
       createdComments.forEach((comment: any, index: number) => {
@@ -403,7 +422,7 @@ describe('Local DynamoDB Integration Tests', () => {
         .filter('approved')
         .equals(true)
         .exec();
-      
+
       expect(comments.Items).toHaveLength(2);
       comments.Items.forEach((comment: any) => {
         expect(comment.get('approved')).toBe(true);
@@ -466,7 +485,7 @@ describe('Local DynamoDB Integration Tests', () => {
       const createdProducts = await Promise.all(
         products.map(product => Product.create(product))
       );
-      
+
       expect(createdProducts).toHaveLength(2);
 
       createdProducts.forEach((product: any, index: number) => {
@@ -484,7 +503,7 @@ describe('Local DynamoDB Integration Tests', () => {
         .where('category')
         .equals('electronics')
         .exec();
-      
+
       expect(products.Items).toHaveLength(2);
       products.Items.forEach((product: any) => {
         expect(product.get('category')).toBe('electronics');
@@ -496,7 +515,7 @@ describe('Local DynamoDB Integration Tests', () => {
         .where('price')
         .gt(1000)
         .exec();
-      
+
       expect(products.Items).toHaveLength(1);
       expect(products.Items[0].get('name')).toBe('MacBook Pro');
     });
@@ -513,7 +532,7 @@ describe('Local DynamoDB Integration Tests', () => {
           inStock: false,
         }
       );
-      
+
       expect(updatedProduct.get('stockCount')).toBe(45);
       expect(updatedProduct.get('inStock')).toBe(false);
     });
@@ -581,7 +600,7 @@ describe('Local DynamoDB Integration Tests', () => {
         .expressionAttributeNames({ '#age': 'age' })
         .expressionAttributeValues({ ':age': 25 })
         .exec();
-      
+
       expect(result.Items).toBeInstanceOf(Array);
       result.Items.forEach((user: any) => {
         expect(user.get('age')).toBeGreaterThan(25);
@@ -592,7 +611,7 @@ describe('Local DynamoDB Integration Tests', () => {
       const result = await User.scan()
         .select('COUNT')
         .exec();
-      
+
       expect(result.Count).toBeTypeOf('number');
       expect(result.Count).toBeGreaterThan(0);
     });
@@ -608,7 +627,7 @@ describe('Local DynamoDB Integration Tests', () => {
       if (!testUser) {
         throw new Error('No test user available for conditional update test');
       }
-      
+
       const userId = testUser.get('id');
 
       await expect(
@@ -630,7 +649,7 @@ describe('Local DynamoDB Integration Tests', () => {
       if (!testUser) {
         throw new Error('No test user available for validation test');
       }
-      
+
       await expect(
         User.update(
           {

@@ -25,10 +25,23 @@ export class BatchOperations<T> {
     const results: Item<T>[] = [];
     
     for (const chunk of chunks) {
+      // Convert keys to proper DynamoDB key format
+      const formattedKeys = chunk.map(key => {
+        if (typeof key === 'object' && key !== null) {
+          // Key is already an object, return as-is
+          return key;
+        } else {
+          // Key is a simple value, format it with the hash key name
+          return {
+            [this.schema.getHashKey() as string]: key
+          };
+        }
+      });
+      
       const params: any = {
         RequestItems: {
           [this.tableName]: {
-            Keys: chunk,
+            Keys: formattedKeys,
           },
         },
       };

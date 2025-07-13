@@ -4,7 +4,7 @@ import { randomUUID } from 'crypto';
 // Equivalent to dynogels.types from the original library
 export const DynogelsTypes = {
   // String set type - non-empty array of strings
-  stringSet: () => z.array(z.string()).min(1).transform(val => new Set(val)),
+  stringSet: () => z.array(z.string()).min(1),
   
   // Number set type - non-empty array of numbers  
   numberSet: () => z.array(z.number()).min(1).transform(val => new Set(val)),
@@ -21,7 +21,13 @@ export const DynogelsTypes = {
   // Additional convenience types
   email: () => z.string().email(),
   url: () => z.string().url(),
-  date: () => z.date(),
+  date: () => z.union([z.date(), z.string()]).transform(val => {
+    if (typeof val === 'string') {
+      const parsed = new Date(val);
+      return isNaN(parsed.getTime()) ? val : parsed;
+    }
+    return val;
+  }),
   
   // JSON type for arbitrary objects
   json: () => z.record(z.any()),
