@@ -23,6 +23,7 @@ export const createTestClient = () => {
 export const initializeTestDynogels = () => {
   const client = createTestClient();
   Dynogels.initialize(client);
+  console.log("Initialized Dynogels");
   return client;
 };
 
