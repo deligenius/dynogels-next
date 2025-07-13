@@ -76,7 +76,7 @@ dynogels.AWS.config.update({
 });
 
 describe('Local DynamoDB Integration Tests', () => {
-  let User: ModelStatic<UserSchema>;
+  let User: ModelStatic<UserSchema>; 
   let BlogPost: ModelStatic<BlogPostSchema>;
   let Comment: ModelStatic<CommentSchema>;
   let Product: ModelStatic<ProductSchema>;
@@ -155,7 +155,8 @@ describe('Local DynamoDB Integration Tests', () => {
 
   describe('User CRUD Operations', () => {
     it('should create a user with all field types', async () => {
-      const userData = {
+      const userData: UserSchema = {
+        id: '123',
         email: 'test@example.com',
         name: 'Test User',
         age: 30,
@@ -180,7 +181,7 @@ describe('Local DynamoDB Integration Tests', () => {
       expect(user.get('email')).toBe('test@example.com');
       expect(user.get('name')).toBe('Test User');
       expect(user.get('roles')).toContain('admin');
-      expect(user.get('settings').theme).toBe('dark');
+      expect(user.get('settings')?.theme).toBe('dark');
 
       // Timestamps should exist when enabled
       expect(user.get('createdAt')).toBeDefined();
@@ -197,9 +198,9 @@ describe('Local DynamoDB Integration Tests', () => {
 
       const user = await User.get(testUser.get('id'));
       expect(user).toBeDefined();
-      expect(user!.get('email')).toBe('test@example.com');
-      expect(user!.get('name')).toBe('Test User');
-      expect(user!.get('roles')).toContain('admin');
+      expect(user?.get('email')).toBe('test@example.com');
+      expect(user?.get('name')).toBe('Test User');
+      expect(user?.get('roles')).toContain('admin');
     });
 
     it('should update user with consistent read', async () => {
@@ -210,16 +211,16 @@ describe('Local DynamoDB Integration Tests', () => {
       const user = await User.get(testUser.get('id'), { ConsistentRead: true });
       expect(user).toBeDefined();
 
-      user!.set('name', 'Updated Test User');
-      user!.set('age', 31);
+      user?.set('name', 'Updated Test User');
+      user?.set('age', 31);
       // Use update operation instead of $add on the item
-      const currentScore = user!.get('score') || 0;
-      user!.set('score', currentScore + 50);
+      const currentScore = user?.get('score') || 0;
+      user?.set('score', currentScore + 50);
 
-      const updatedUser = await user!.save();
-      expect(updatedUser.get('name')).toBe('Updated Test User');
-      expect(updatedUser.get('age')).toBe(31);
-      expect(updatedUser.get('score')).toBe(150);
+      const updatedUser = await user?.save();
+      expect(updatedUser?.get('name')).toBe('Updated Test User');
+      expect(updatedUser?.get('age')).toBe(31);
+      expect(updatedUser?.get('score')).toBe(150);
     });
 
     it('should handle validation errors', async () => {
@@ -244,7 +245,7 @@ describe('Local DynamoDB Integration Tests', () => {
 
       const createdUsers = await User.create(users);
       expect(createdUsers).toHaveLength(5);
-      createdUsers.forEach((user: any, index: number) => {
+      createdUsers.forEach((user: ModelInstance<UserSchema>, index: number) => {
         expect(user.get('email')).toBe(`batch-user-${index}@example.com`);
         expect(user.get('name')).toBe(`Batch User ${index}`);
       });
@@ -294,7 +295,7 @@ describe('Local DynamoDB Integration Tests', () => {
 
       expect(createdPosts).toHaveLength(3);
 
-      createdPosts.forEach((post: any, index: number) => {
+      createdPosts.forEach((post: ModelInstance<BlogPostSchema>, index: number) => {
         expect(post.get('authorId')).toBe(testAuthor.get('id'));
         expect(post.get('title')).toBe(posts[index].title);
         expect(post.get('postId')).toBeDefined();
@@ -306,9 +307,9 @@ describe('Local DynamoDB Integration Tests', () => {
     it('should query posts by author', async () => {
       const posts = await BlogPost.query(testAuthor.get('id')).exec();
       expect(posts.Items).toHaveLength(3);
-      posts.Items.forEach((post: any) => {
+      for (const post of posts.Items as ModelInstance<BlogPostSchema>[]) {
         expect(post.get('authorId')).toBe(testAuthor.get('id'));
-      });
+      }
     });
 
     it('should query posts with filters', async () => {
@@ -318,9 +319,9 @@ describe('Local DynamoDB Integration Tests', () => {
         .exec();
 
       expect(posts.Items).toHaveLength(2);
-      posts.Items.forEach((post: any) => {
+      for (const post of posts.Items as ModelInstance<BlogPostSchema>[]) {
         expect(post.get('published')).toBe(true);
-      });
+      }
     });
 
     it('should query with limit and ordering', async () => {
@@ -341,8 +342,8 @@ describe('Local DynamoDB Integration Tests', () => {
       );
 
       expect(post).toBeDefined();
-      expect(post!.get('title')).toBe('First Blog Post');
-      expect(post!.get('authorId')).toBe(testAuthor.get('id'));
+      expect(post?.get('title')).toBe('First Blog Post');
+      expect(post?.get('authorId')).toBe(testAuthor.get('id'));
     });
 
     it('should update post content', async () => {
@@ -366,7 +367,7 @@ describe('Local DynamoDB Integration Tests', () => {
   });
 
   describe('Comment Operations', () => {
-    let testPost: any;
+    let testPost: ModelInstance<CommentSchema>;
 
     beforeAll(() => {
       if (testPosts.length === 0) {
@@ -403,7 +404,7 @@ describe('Local DynamoDB Integration Tests', () => {
 
       expect(createdComments).toHaveLength(3);
 
-      createdComments.forEach((comment: any, index: number) => {
+      createdComments.forEach((comment: ModelInstance<CommentSchema>, index: number) => {
         expect(comment.get('postId')).toBe(testPost.get('postId'));
         expect(comment.get('content')).toBe(comments[index].content);
       });
@@ -412,9 +413,9 @@ describe('Local DynamoDB Integration Tests', () => {
     it('should query comments by post', async () => {
       const comments = await Comment.query(testPost.get('postId')).exec();
       expect(comments.Items).toHaveLength(3);
-      comments.Items.forEach((comment: any) => {
+      for (const comment of comments.Items as ModelInstance<CommentSchema>[]) {
         expect(comment.get('postId')).toBe(testPost.get('postId'));
-      });
+      }
     });
 
     it('should filter approved comments', async () => {
@@ -424,14 +425,14 @@ describe('Local DynamoDB Integration Tests', () => {
         .exec();
 
       expect(comments.Items).toHaveLength(2);
-      comments.Items.forEach((comment: any) => {
+      for (const comment of comments.Items as ModelInstance<CommentSchema>[]) {
         expect(comment.get('approved')).toBe(true);
-      });
+      }
     });
   });
 
   describe('Product Operations with Complex Data', () => {
-    let testProducts: any[] = [];
+    let testProducts: ModelInstance<ProductSchema>[] = [];
 
     it('should create products with complex nested data', async () => {
       const products = [
@@ -488,7 +489,7 @@ describe('Local DynamoDB Integration Tests', () => {
 
       expect(createdProducts).toHaveLength(2);
 
-      createdProducts.forEach((product: any, index: number) => {
+      createdProducts.forEach((product: ModelInstance<ProductSchema>, index: number) => {
         expect(product.get('name')).toBe(products[index].name);
         expect(product.get('price')).toBe(products[index].price);
         expect(product.get('manufacturer').name).toBe('Apple Inc.');
@@ -505,9 +506,9 @@ describe('Local DynamoDB Integration Tests', () => {
         .exec();
 
       expect(products.Items).toHaveLength(2);
-      products.Items.forEach((product: any) => {
+      for (const product of products.Items as ModelInstance<ProductSchema>[]) {
         expect(product.get('category')).toBe('electronics');
-      });
+      }
     });
 
     it('should scan products with price filter', async () => {
@@ -539,7 +540,7 @@ describe('Local DynamoDB Integration Tests', () => {
   });
 
   describe('Batch Operations', () => {
-    let batchUsers: any[] = [];
+    let batchUsers: ModelInstance<UserSchema>[] = [];
 
     beforeAll(async () => {
       // Create some users for batch operations
@@ -562,9 +563,9 @@ describe('Local DynamoDB Integration Tests', () => {
 
       const users = await User.getItems(userIds);
       expect(users).toHaveLength(5);
-      users.forEach((user: any) => {
+      for (const user of users as ModelInstance<UserSchema>[]) {
         expect(userIds).toContain(user.get('id'));
-      });
+      }
     });
 
     it('should batch get with consistent read', async () => {
@@ -602,9 +603,9 @@ describe('Local DynamoDB Integration Tests', () => {
         .exec();
 
       expect(result.Items).toBeInstanceOf(Array);
-      result.Items.forEach((user: any) => {
+      for (const user of result.Items) {
         expect(user.get('age')).toBeGreaterThan(25);
-      });
+      }
     });
 
     it('should count items in scan', async () => {

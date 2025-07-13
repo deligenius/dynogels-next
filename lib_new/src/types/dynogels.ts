@@ -1,13 +1,13 @@
-import { z } from 'zod';
+import type { z } from 'zod';
 
 // Core DynamoDB types
 export type DynamoDBValue = string | number | boolean | Uint8Array | null | undefined | DynamoDBValue[] | { [key: string]: DynamoDBValue };
 
 // Key types for hash and range keys
-export type KeyType<T, THashKey extends keyof T, TRangeKey extends keyof T | undefined = undefined> = 
-  TRangeKey extends keyof T 
-    ? { [K in THashKey | TRangeKey]: T[K] }
-    : { [K in THashKey]: T[K] };
+export type KeyType<T, THashKey extends keyof T, TRangeKey extends keyof T | undefined = undefined> =
+  TRangeKey extends keyof T
+  ? { [K in THashKey | TRangeKey]: T[K] }
+  : { [K in THashKey]: T[K] };
 
 // Secondary index configuration
 export interface SecondaryIndex {
@@ -91,19 +91,19 @@ export interface ScanResult<T> {
 }
 
 // Condition types for query builder
-export type ConditionOperator = 
-  | 'EQ' 
-  | 'NE' 
-  | 'LT' 
-  | 'LE' 
-  | 'GT' 
-  | 'GE' 
-  | 'BETWEEN' 
-  | 'IN' 
-  | 'BEGINS_WITH' 
-  | 'CONTAINS' 
-  | 'NOT_CONTAINS' 
-  | 'NULL' 
+export type ConditionOperator =
+  | 'EQ'
+  | 'NE'
+  | 'LT'
+  | 'LE'
+  | 'GT'
+  | 'GE'
+  | 'BETWEEN'
+  | 'IN'
+  | 'BEGINS_WITH'
+  | 'CONTAINS'
+  | 'NOT_CONTAINS'
+  | 'NULL'
   | 'NOT_NULL';
 
 export interface QueryCondition {
