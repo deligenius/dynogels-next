@@ -12,13 +12,13 @@ export class Scan<T> {
   private filters: FilterCondition[] = [];
   private projectionExpression?: string;
   private limitValue?: number;
-  private startKey?: Record<string, any>;
-  private consistentRead?: boolean;
+  private startKeyValue?: Record<string, any>;
+  private consistentReadValue?: boolean;
   private selectType?: 'ALL_ATTRIBUTES' | 'ALL_PROJECTED_ATTRIBUTES' | 'SPECIFIC_ATTRIBUTES' | 'COUNT';
   private filterExpressionValue?: string;
   private expressionAttributeNamesValue?: Record<string, string>;
   private expressionAttributeValuesValue?: Record<string, any>;
-  private segment?: number;
+  private segmentValue?: number;
   private totalSegments?: number;
   
   constructor(
@@ -55,7 +55,7 @@ export class Scan<T> {
    * Set the start key for pagination
    */
   startKey(key: Record<string, any>): this {
-    this.startKey = key;
+    this.startKeyValue = key;
     return this;
   }
   
@@ -63,7 +63,7 @@ export class Scan<T> {
    * Enable consistent read
    */
   consistentRead(enabled: boolean = true): this {
-    this.consistentRead = enabled;
+    this.consistentReadValue = enabled;
     return this;
   }
   
@@ -103,7 +103,7 @@ export class Scan<T> {
    * Set segment for parallel scanning
    */
   segment(segment: number, totalSegments: number): this {
-    this.segment = segment;
+    this.segmentValue = segment;
     this.totalSegments = totalSegments;
     return this;
   }
@@ -262,20 +262,20 @@ export class Scan<T> {
       params.Limit = this.limitValue;
     }
     
-    if (this.startKey) {
-      params.ExclusiveStartKey = this.startKey;
+    if (this.startKeyValue) {
+      params.ExclusiveStartKey = this.startKeyValue;
     }
     
-    if (this.consistentRead) {
-      params.ConsistentRead = this.consistentRead;
+    if (this.consistentReadValue) {
+      params.ConsistentRead = this.consistentReadValue;
     }
     
     if (this.selectType) {
       params.Select = this.selectType;
     }
     
-    if (this.segment !== undefined && this.totalSegments !== undefined) {
-      params.Segment = this.segment;
+    if (this.segmentValue !== undefined && this.totalSegments !== undefined) {
+      params.Segment = this.segmentValue;
       params.TotalSegments = this.totalSegments;
     }
     

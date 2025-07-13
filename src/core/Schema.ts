@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { SchemaConfig } from '../types/dynogels.js';
+import { DynogelsTypes } from '../utils/types.js';
 
 export class Schema<T extends z.ZodObject<any>> {
   public readonly zodSchema: T;
@@ -21,14 +22,14 @@ export class Schema<T extends z.ZodObject<any>> {
       const fieldName = typeof this.config.createdAt === 'string' 
         ? this.config.createdAt 
         : 'createdAt';
-      timestampFields[fieldName] = z.date().optional();
+      timestampFields[fieldName] = DynogelsTypes.date().optional();
     }
     
     if (this.config.updatedAt !== false) {
       const fieldName = typeof this.config.updatedAt === 'string' 
         ? this.config.updatedAt 
         : 'updatedAt';
-      timestampFields[fieldName] = z.date().optional();
+      timestampFields[fieldName] = DynogelsTypes.date().optional();
     }
     
     return schema.extend(timestampFields);
@@ -38,7 +39,8 @@ export class Schema<T extends z.ZodObject<any>> {
    * Validate data against the schema
    */
   validate(data: unknown) {
-    return this.enhancedSchema.safeParse(data);
+    const transformedData = this.transformDynamoDBData(data);
+    return this.enhancedSchema.safeParse(transformedData);
   }
   
   /**
@@ -105,7 +107,7 @@ export class Schema<T extends z.ZodObject<any>> {
   addTimestampsForCreate(data: any): any {
     if (!this.hasTimestamps()) return data;
     
-    const now = new Date();
+    const now = new Date().toISOString();
     const result = { ...data };
     
     const createdAtField = this.getCreatedAtField();
@@ -131,7 +133,7 @@ export class Schema<T extends z.ZodObject<any>> {
     if (updatedAtField) {
       return {
         ...data,
-        [updatedAtField]: new Date()
+        [updatedAtField]: new Date().toISOString()
       };
     }
     
@@ -166,5 +168,25 @@ export class Schema<T extends z.ZodObject<any>> {
    */
   getIndex(name: string) {
     return this.getIndexes().find(index => index.name === name);
+  }
+  
+  /**
+   * Transform raw DynamoDB data to expected schema format
+   */
+  transformDynamoDBData(data: any): any {
+    if (!data || typeof data !== 'object') {
+      return data;
+    }
+    
+    const transformed = { ...data };
+    
+    // Transform Set objects to arrays for validation
+    for (const [key, value] of Object.entries(transformed)) {
+      if (value instanceof Set) {
+        transformed[key] = Array.from(value);
+      }
+    }
+    
+    return transformed;
   }
 }

@@ -17,8 +17,8 @@ export class Query<T> {
   private projectionExpression?: string;
   private scanIndexForward: boolean = true;
   private limitValue?: number;
-  private startKey?: Record<string, any>;
-  private consistentRead?: boolean;
+  private startKeyValue?: Record<string, any>;
+  private consistentReadValue?: boolean;
   private selectType?: 'ALL_ATTRIBUTES' | 'ALL_PROJECTED_ATTRIBUTES' | 'SPECIFIC_ATTRIBUTES' | 'COUNT';
   private filterExpressionValue?: string;
   private expressionAttributeNamesValue?: Record<string, string>;
@@ -90,7 +90,7 @@ export class Query<T> {
    * Set the start key for pagination
    */
   startKey(key: Record<string, any>): this {
-    this.startKey = key;
+    this.startKeyValue = key;
     return this;
   }
   
@@ -98,7 +98,7 @@ export class Query<T> {
    * Enable consistent read
    */
   consistentRead(enabled: boolean = true): this {
-    this.consistentRead = enabled;
+    this.consistentReadValue = enabled;
     return this;
   }
   
@@ -341,12 +341,12 @@ export class Query<T> {
       params.Limit = this.limitValue;
     }
     
-    if (this.startKey) {
-      params.ExclusiveStartKey = this.startKey;
+    if (this.startKeyValue) {
+      params.ExclusiveStartKey = this.startKeyValue;
     }
     
-    if (this.consistentRead) {
-      params.ConsistentRead = this.consistentRead;
+    if (this.consistentReadValue) {
+      params.ConsistentRead = this.consistentReadValue;
     }
     
     if (this.selectType) {
