@@ -10,6 +10,12 @@ export interface ModelConfig<T extends z.ZodObject<any>> {
   ttl?: {
     attribute: keyof z.infer<T>;
   };
+  indexes?: {
+    [indexName: string]: {
+      hashKey: string;
+      rangeKey?: string;
+    };
+  };
 }
 
 export interface ModelOptions {

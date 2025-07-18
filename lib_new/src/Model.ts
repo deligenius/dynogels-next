@@ -2,6 +2,7 @@ import type { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import { z } from 'zod';
 import { ItemNotFoundError, ValidationError } from './errors/DynamoDBError.js';
 import type { ModelConfig, ModelOptions, UpdateInput } from './types/Model.js';
+import { QueryBuilder } from './query/QueryBuilder.js';
 
 type PrimaryKey<TSchema extends z.ZodObject<any>, THashKey extends keyof z.infer<TSchema>, TRangeKey extends keyof z.infer<TSchema> | undefined = undefined> = TRangeKey extends keyof z.infer<TSchema> ? {
   [K in THashKey]: z.infer<TSchema>[K];
@@ -159,6 +160,10 @@ export class Model<
       }
       throw error;
     }
+  }
+
+  query(hashKeyValue: z.infer<TSchema>[THashKey]): QueryBuilder<TSchema, THashKey, TRangeKey> {
+    return new QueryBuilder(this.client, this.config, hashKeyValue);
   }
 
   private getTimestamps(createdAt?: string, updatedAt?: string) {

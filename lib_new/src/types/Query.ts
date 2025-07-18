@@ -1,6 +1,16 @@
 import type { z } from 'zod';
+import type { NativeAttributeValue, QueryCommandInput } from '@aws-sdk/lib-dynamodb';
 
-export interface QueryOptions {
+// QueryOptions that map directly to QueryCommandInput properties
+export interface QueryOptions extends Pick<QueryCommandInput, 
+  'ConsistentRead' | 'Limit' | 'ScanIndexForward' | 'ProjectionExpression' | 'ReturnConsumedCapacity'
+> {
+  // Use NativeAttributeValue for pagination keys to match AWS SDK
+  ExclusiveStartKey?: Record<string, NativeAttributeValue>;
+}
+
+// Legacy interface for backward compatibility
+export interface LegacyQueryOptions {
   consistentRead?: boolean;
   limit?: number;
   scanIndexForward?: boolean;
@@ -9,7 +19,7 @@ export interface QueryOptions {
 
 export interface QueryResult<T> {
   items: T[];
-  lastEvaluatedKey?: Record<string, any>;
+  lastEvaluatedKey?: Record<string, NativeAttributeValue>;
   count: number;
   scannedCount: number;
   consumedCapacity?: any;
@@ -21,19 +31,33 @@ export interface IndexConfig {
   rangeKey?: string;
 }
 
+// Use NativeAttributeValue for type safety with AWS SDK
 export interface ConditionExpression {
   expression: string;
   attributeNames: Record<string, string>;
-  attributeValues: Record<string, any>;
+  attributeValues: Record<string, NativeAttributeValue>;
 }
 
 export interface DynamoDBExpression {
   expression: string;
   attributeNames: Record<string, string>;
-  attributeValues: Record<string, any>;
+  attributeValues: Record<string, NativeAttributeValue>;
 }
 
 export type SchemaKeys<T extends z.ZodObject<any>> = keyof z.infer<T>;
+
+// Type-safe value type that matches NativeAttributeValue but with better inference
+export type TypedNativeValue<T> = T extends string 
+  ? string 
+  : T extends number 
+  ? number 
+  : T extends boolean 
+  ? boolean 
+  : T extends Array<infer U> 
+  ? Array<TypedNativeValue<U>>
+  : T extends Record<string, any>
+  ? { [K in keyof T]: TypedNativeValue<T[K]> }
+  : NativeAttributeValue;
 
 export interface StringOperators<TBuilder> {
   equals(value: string): TBuilder;
@@ -85,7 +109,11 @@ export type ConditionOperators<T, TBuilder> = T extends string
   ? BooleanOperators<TBuilder>
   : BaseOperators<TBuilder>;
 
-export interface FilterOperators<T, TBuilder> extends ConditionOperators<T, TBuilder> {
+export interface FilterOperators<T, TBuilder> {
+  equals(value: T): TBuilder;
+  eq(value: T): TBuilder;
+  ne(value: T): TBuilder;
   exists(): TBuilder;
   notExists(): TBuilder;
+  in(values: T[]): TBuilder;
 }
