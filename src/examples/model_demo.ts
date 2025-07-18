@@ -66,10 +66,19 @@ async function main() {
 		// 3. Create tables using models
 		console.log("3. Creating tables...");
 
+		if (await tableManager.tableExists(User.config.tableName)) {
+			await tableManager.deleteTable(User.config.tableName);
+			console.log("🗑️ Users table deleted");
+		}
+
+		if (await tableManager.tableExists(Product.config.tableName)) {
+			await tableManager.deleteTable(Product.config.tableName);
+			console.log("🗑️ Products table deleted");
+		}
+
 		// Create User table using model directly
 		await tableManager.createTable(User, { read: 5, write: 5 });
 		console.log("✅ Users table created");
-
 		// Create Product table using model directly
 		await tableManager.createTable(Product, { read: 3, write: 3 });
 		console.log("✅ Products table created");
@@ -267,8 +276,8 @@ async function main() {
 		// Clean up tables on error
 		try {
 			console.log("\n🧹 Cleaning up tables...");
-			await tableManager.deleteTable("users").catch(() => {});
-			await tableManager.deleteTable("products").catch(() => {});
+			await tableManager.deleteTable("users").catch(() => { });
+			await tableManager.deleteTable("products").catch(() => { });
 			console.log("✅ Tables cleaned up");
 		} catch (cleanupError) {
 			console.error("Failed to clean up tables:", cleanupError);
