@@ -81,25 +81,35 @@ type ConditionOperators<T> = T extends string
 ### Fluent Interface
 
 ```typescript
-// Basic query
-const users = await UserModel.query('user123')
-  .where('createdAt').gt('2023-01-01')
-  .filter('status').equals('active')
+// Basic hash key query with key-value map
+const users = await UserModel.query({ id: 'user123' })
+  .filter('status').eq('active')
   .limit(10)
   .exec();
 
+// Composite key query (exact match)
+const product = await ProductModel.query({ 
+  productId: 'prod-1', 
+  category: 'electronics' 
+}).exec();
+
+// Partial composite key query with additional conditions
+const productVersions = await ProductModel.query({ productId: 'prod-1' })
+  .where('category').beginsWith('elect')
+  .filter('price').between(100, 1000)
+  .exec();
+
 // Global Secondary Index query
-const activeUsers = await UserModel.query('organization123')
-  .usingIndex('GSI1')
-  .where('status').equals('active')
-  .filter('lastLogin').gt(Date.now() - 86400000)
+const activeUsers = await UserModel.query({ status: 'active' })
+  .usingIndex('StatusIndex')
+  .filter('lastLogin').gte('2023-01-01')
   .descending()
   .exec();
 
 // Paginated query
 let lastKey = undefined;
 do {
-  const result = await UserModel.query('user123')
+  const result = await UserModel.query({ id: 'user123' })
     .startKey(lastKey)
     .limit(100)
     .execWithPagination();
@@ -108,24 +118,38 @@ do {
   lastKey = result.lastEvaluatedKey;
 } while (lastKey);
 
-// Load all results
-const allItems = await UserModel.query('user123')
+// Stream large result sets
+for await (const batch of UserModel.query({ status: 'active' }).stream()) {
+  console.log(`Processing ${batch.length} items`);
+  // Process each batch
+}
+
+// Load all results at once
+const allItems = await UserModel.query({ status: 'active' })
   .loadAll()
   .exec();
 ```
 
 ### Method Categories
 
-#### 1. Key Conditions (WHERE)
-- `where(field)` - Target a specific field for key conditions
-- `equals(value)` - Exact match
+#### 1. Query Initialization
+- `query(keyValues)` - Initialize query with key-value pairs that generate `eq` conditions automatically
+  - `keyValues: Partial<Schema>` - Any field-value pairs from the schema
+  - All provided keys become equality conditions in `KeyConditionExpression`
+  - Works with hash-only keys: `{ id: 'user123' }`
+  - Works with composite keys: `{ productId: 'prod-1', category: 'electronics' }`
+  - Works with partial composite keys: `{ productId: 'prod-1' }`
+
+#### 2. Additional Key Conditions (WHERE)
+- `where(field)` - Target a specific field for additional key conditions (typically range key operations)
+- `eq(value)` - Exact match equality
 - `gt(value)`, `gte(value)` - Greater than comparisons
 - `lt(value)`, `lte(value)` - Less than comparisons
 - `between(min, max)` - Range conditions
-- `beginsWith(prefix)` - String prefix matching
+- `beginsWith(prefix)` - String prefix matching (range key only)
 
-#### 2. Filter Conditions
-- `filter(field)` - Target a field for filtering
+#### 3. Filter Conditions (Non-Key Attributes)
+- `filter(field)` - Target a field for filtering (goes into `FilterExpression`)
 - All WHERE operators plus:
 - `contains(value)` - Contains substring/element
 - `notContains(value)` - Does not contain
@@ -133,17 +157,19 @@ const allItems = await UserModel.query('user123')
 - `notExists()` - Attribute does not exist
 - `in(values)` - Value in array
 
-#### 3. Query Configuration
+#### 4. Query Configuration
 - `usingIndex(indexName)` - Use Global/Local Secondary Index
 - `consistentRead(enabled)` - Enable consistent reads
 - `limit(count)` - Limit result count
 - `ascending()` / `descending()` - Sort order
 - `startKey(key)` - Pagination start key
+- `projectionExpression(expression)` - Specify attributes to return
+- `returnConsumedCapacity(level)` - Return capacity consumption info
 
-#### 4. Execution
+#### 5. Execution Methods
 - `exec()` - Execute and return items array
-- `execWithPagination()` - Execute and return full result with pagination info
-- `loadAll()` - Load all pages automatically
+- `execWithPagination(lastKey?)` - Execute and return full result with pagination info
+- `loadAll()` - Load all pages automatically (use with caution)
 - `stream()` - Return async iterator for large datasets
 
 ## Implementation Details
@@ -172,58 +198,88 @@ const request: QueryCommandInput = {
 };
 ```
 
-### 1. QueryBuilder Class
+### 1. QueryBuilder Class - Simplified Key-Value Approach
 
-Using AWS SDK's `QueryCommandInput` type directly for type safety:
+The actual implementation uses a simplified approach that accepts key-value pairs and generates equality conditions automatically:
 
 ```typescript
-import type { DynamoDBDocument, QueryCommandInput } from '@aws-sdk/lib-dynamodb';
+import type { DynamoDBDocument, QueryCommandInput, NativeAttributeValue } from '@aws-sdk/lib-dynamodb';
 
 export class QueryBuilder<
   TSchema extends z.ZodObject<any>,
   THashKey extends keyof z.infer<TSchema>,
   TRangeKey extends keyof z.infer<TSchema> | undefined
 > {
-  private hashKeyValue: z.infer<TSchema>[THashKey];
   private keyConditions: ConditionExpression[] = [];
   private filterConditions: ConditionExpression[] = [];
   private options: QueryOptions = {};
   private indexName?: string;
+  private isLoadAll = false;
 
   constructor(
-    private client: DynamoDBDocument,
-    private config: ModelConfig<TSchema>,
-    hashKeyValue: z.infer<TSchema>[THashKey]
-  ) {
-    this.hashKeyValue = hashKeyValue;
+    private readonly client: DynamoDBDocument,
+    private readonly config: ModelConfig<TSchema> & {
+      hashKey: THashKey;
+      rangeKey?: TRangeKey;
+    },
+    private readonly keyValues: Partial<z.infer<TSchema>>
+  ) { }
+
+  // Simplified key condition building - generate eq conditions for all keyValues
+  private buildKeyConditions(): ConditionExpression[] {
+    const conditions: ConditionExpression[] = [];
+    const existingKeys = this.getExistingValueKeys();
+
+    // Generate eq conditions for all provided key values
+    for (const [fieldName, value] of Object.entries(this.keyValues)) {
+      if (value !== undefined) {
+        conditions.push(QueryExpressions.createCondition(
+          fieldName,
+          '=',
+          value as NativeAttributeValue,
+          existingKeys
+        ));
+      }
+    }
+
+    return conditions;
   }
 
   // Build request using AWS SDK's QueryCommandInput type
   private buildRequest(): QueryCommandInput {
     const request: QueryCommandInput = {
-      TableName: this.config.tableName,
-      ...this.options
+      TableName: this.config.tableName
     };
+
+    // Apply options
+    if (this.options.ConsistentRead !== undefined) {
+      request.ConsistentRead = this.options.ConsistentRead;
+    }
+    if (this.options.Limit !== undefined) {
+      request.Limit = this.options.Limit;
+    }
+    // ... other options
 
     if (this.indexName) {
       request.IndexName = this.indexName;
     }
 
-    // Build key condition expression
-    const hashKeyCondition = this.buildHashKeyCondition();
-    const allKeyConditions = [hashKeyCondition, ...this.keyConditions];
+    // Build key conditions directly from keyValues
+    const keyConditions = this.buildKeyConditions();
+    const allKeyConditions = [...keyConditions, ...this.keyConditions];
+
     const keyConditionExpression = QueryExpressions.buildKeyCondition(allKeyConditions);
 
     if (keyConditionExpression.expression) {
       request.KeyConditionExpression = keyConditionExpression.expression;
-      request.ExpressionAttributeNames = {
-        ...request.ExpressionAttributeNames,
-        ...keyConditionExpression.attributeNames
-      };
-      request.ExpressionAttributeValues = {
-        ...request.ExpressionAttributeValues,
-        ...keyConditionExpression.attributeValues
-      };
+      
+      if (Object.keys(keyConditionExpression.attributeNames).length > 0) {
+        request.ExpressionAttributeNames = keyConditionExpression.attributeNames;
+      }
+      
+      if (Object.keys(keyConditionExpression.attributeValues).length > 0) {
+        request.ExpressionAttributeValues = keyConditionExpression.attributeValues;
+      }
     }
 
     // Build filter expression if filters exist
@@ -231,10 +287,12 @@ export class QueryBuilder<
       const filterExpression = QueryExpressions.buildFilterExpression(this.filterConditions);
       if (filterExpression.expression) {
         request.FilterExpression = filterExpression.expression;
+        
         request.ExpressionAttributeNames = {
           ...request.ExpressionAttributeNames,
           ...filterExpression.attributeNames
         };
+        
         request.ExpressionAttributeValues = {
           ...request.ExpressionAttributeValues,
           ...filterExpression.attributeValues
@@ -245,13 +303,17 @@ export class QueryBuilder<
     return request;
   }
 
-  // Execution becomes straightforward with proper typing
-  async execWithPagination(): Promise<QueryResult<z.infer<TSchema>>> {
-    const request = this.buildRequest(); // Returns QueryCommandInput
-    
+  // Execution with proper error handling
+  async execWithPagination(lastEvaluatedKey?: Record<string, any>): Promise<QueryResult<z.infer<TSchema>>> {
+    const request = this.buildRequest();
+
+    if (lastEvaluatedKey) {
+      request.ExclusiveStartKey = lastEvaluatedKey;
+    }
+
     try {
       const response = await this.client.query(request);
-      
+
       const items = (response.Items || []).map(item =>
         this.validateAndTransform(item)
       );
@@ -266,6 +328,17 @@ export class QueryBuilder<
     } catch (error) {
       throw new Error(`Query failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  }
+
+  // Stream support for large datasets
+  async *stream(): AsyncIterableIterator<z.infer<TSchema>[]> {
+    let lastEvaluatedKey = this.options.ExclusiveStartKey;
+
+    do {
+      const result = await this.execWithPagination(lastEvaluatedKey);
+      yield result.items;
+      lastEvaluatedKey = result.lastEvaluatedKey;
+    } while (lastEvaluatedKey);
   }
 }
 ```
@@ -596,17 +669,52 @@ export class QueryExpressions {
 
 ## Integration with Model Class
 
-### Model.query() Method
+### Model.query() Method - Key-Value Approach
+
+The actual implementation uses a flexible key-value approach instead of requiring only the hash key:
 
 ```typescript
 export class Model<TSchema, THashKey, TRangeKey> {
   // Existing methods...
 
-  query(hashKeyValue: z.infer<TSchema>[THashKey]): QueryBuilder<TSchema, THashKey, TRangeKey> {
-    return new QueryBuilder(this.client, this.config, hashKeyValue);
+  query(keyValues: Partial<z.infer<TSchema>>): QueryBuilder<TSchema, THashKey, TRangeKey> {
+    return new QueryBuilder(this.client, this.config, keyValues);
   }
 }
 ```
+
+### Key Benefits of the Key-Value Approach
+
+1. **Flexible Key Specification**: Accept any combination of key fields
+   ```typescript
+   // Hash key only
+   User.query({ id: 'user123' })
+   
+   // Composite key (exact match)
+   Product.query({ productId: 'prod-1', category: 'electronics' })
+   
+   // Partial composite key
+   Product.query({ productId: 'prod-1' })
+   ```
+
+2. **Automatic Equality Conditions**: All provided key-value pairs become `eq` conditions
+   - No need to distinguish between hash and range keys
+   - Simpler API with consistent behavior
+   - Works with any key structure
+
+3. **Index Support**: Works seamlessly with secondary indexes
+   ```typescript
+   // Query GSI with appropriate key fields
+   User.query({ status: 'active', department: 'engineering' })
+     .usingIndex('StatusDepartmentIndex')
+   ```
+
+4. **Type Safety**: Full TypeScript support with schema validation
+   ```typescript
+   // TypeScript ensures only valid schema fields can be used
+   User.query({ invalidField: 'value' }) // ❌ Compile error
+   User.query({ id: 'user123' })         // ✅ Valid
+   ```
 
 ## Error Handling
 

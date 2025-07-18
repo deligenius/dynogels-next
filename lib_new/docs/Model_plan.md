@@ -162,6 +162,7 @@ import { z } from 'zod';
 import { DynamoDBDocument } from '@aws-sdk/lib-dynamodb';
 import { ModelConfig, ModelOptions, PrimaryKey, UpdateInput } from './types/Model';
 import { ItemNotFoundError, ValidationError } from './errors/DynamoDBError';
+import { QueryBuilder } from './query/QueryBuilder';
 
 export class Model<
   TSchema extends z.ZodObject<any>,
@@ -295,6 +296,10 @@ export class Model<
     }
 
     return this.validateAndTransform(result.Attributes);
+  }
+
+  query(keyValues: Partial<z.infer<TSchema>>): QueryBuilder<TSchema, THashKey, TRangeKey> {
+    return new QueryBuilder(this.client, this.config, keyValues);
   }
 
   private validateAndTransform(item: any): TItem {
@@ -489,7 +494,62 @@ export class TableManager {
 }
 ```
 
-### Phase 5: Main Export and Integration
+### Phase 5: Query System Implementation
+
+#### 5.1 Query Builder Integration
+
+The Model class now includes a powerful query system that uses a flexible key-value approach:
+
+```typescript
+// Simple query with key-value pairs (generates eq conditions automatically)
+query(keyValues: Partial<z.infer<TSchema>>): QueryBuilder<TSchema, THashKey, TRangeKey> {
+  return new QueryBuilder(this.client, this.config, keyValues);
+}
+```
+
+#### Key Features of Query Implementation:
+
+1. **Flexible Key-Value Initialization**: 
+   - `query({ id: 'user123' })` - Hash key only
+   - `query({ productId: 'prod-1', category: 'electronics' })` - Composite key exact match
+   - `query({ productId: 'prod-1' })` - Partial composite key
+
+2. **Automatic Equality Conditions**:
+   - All provided key-value pairs become `eq` conditions in `KeyConditionExpression`
+   - No distinction between hash and range keys at the API level
+   - Simplified approach eliminates complex key handling logic
+
+3. **Fluent Query API**:
+   ```typescript
+   // Additional key conditions (typically range key operations)
+   .where('category').beginsWith('elect')
+   
+   // Filter conditions (non-key attributes)
+   .filter('status').eq('active')
+   .filter('age').between(18, 65)
+   
+   // Query options
+   .limit(10)
+   .ascending()
+   .consistentRead(true)
+   
+   // Execution
+   .exec()                    // Returns items array
+   .execWithPagination()      // Returns full result with pagination
+   .stream()                  // Async iterator for large datasets
+   ```
+
+4. **Index Support**:
+   ```typescript
+   User.query({ status: 'active' })
+     .usingIndex('StatusIndex')
+     .filter('lastLogin').gte('2023-01-01')
+     .exec();
+   ```
+
+5. **Type Safety**: Full TypeScript support with schema-based validation for all query parameters.
+
+### Phase 6: Main Export and Integration
 
 #### 5.1 Main Module
 ```typescript
@@ -497,7 +557,9 @@ export class TableManager {
 export { Model } from './Model';
 export { ModelFactory } from './ModelFactory';
 export { TableManager } from './TableManager';
+export { QueryBuilder } from './query/QueryBuilder';
 export * from './types/Model';
+export * from './types/Query';
 export * from './errors/DynamoDBError';
 
 // Convenience exports
@@ -554,6 +616,20 @@ const user = await User.create({
 const retrieved = await User.get({ id: '123' });
 const updated = await User.update({ id: '123' }, { age: 31 });
 
+// Query operations (new feature)
+const usersByEmail = await User.query({ email: 'user@example.com' }).exec();
+
+// Query with filters
+const activeUsers = await User.query({ status: 'active' })
+  .filter('age').gte(18)
+  .limit(10)
+  .exec();
+
+// Query with pagination
+const page = await User.query({ status: 'active' })
+  .limit(10)
+  .execWithPagination();
+
 // Batch get multiple items
 const users = await User.getMany([
   { id: '123' },
@@ -584,6 +660,7 @@ const deleted = await User.destroy({ id: '123' });
 - Clear separation between Model and Table concerns
 - Full type inference from Zod schemas
 - Comprehensive test coverage possibilities
+- **Query System**: Fluent, type-safe query API with flexible key-value initialization
 
 ### 3. Developer Experience
 - IntelliSense support for all operations
@@ -591,5 +668,15 @@ const deleted = await User.destroy({ id: '123' });
 - Predictable API behavior
 - Easy mocking for tests
 - Convention over configuration
+- **Intuitive Querying**: Simple key-value query initialization that works with any key structure
+- **Flexible Query Building**: Chainable API for complex queries with filters and options
 
-This architecture provides a solid foundation that can be extended with additional features like query builders, batch operations, and advanced DynamoDB features while maintaining the core principles.
+### 4. Query System Benefits
+- **Simplified API**: No need to distinguish between hash and range keys
+- **Automatic Key Conditions**: All provided key-value pairs become equality conditions
+- **Index Support**: Seamless querying of secondary indexes
+- **Performance Features**: Streaming, pagination, and batch loading support
+- **Type Safety**: Full TypeScript validation for all query parameters
+- **AWS SDK v3 Integration**: Uses native attribute values and modern SDK patterns
+
+This architecture provides a solid foundation that has been successfully extended with a comprehensive query system, while maintaining all core principles and providing an excellent developer experience.
