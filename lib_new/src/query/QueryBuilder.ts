@@ -228,7 +228,7 @@ export class QueryBuilder<
     const keyConditions = this.buildKeyConditions();
     const allKeyConditions = [...keyConditions, ...this.keyConditions];
 
-    const keyConditionExpression = QueryExpressions.buildKeyCondition(allKeyConditions);
+    const keyConditionExpression = QueryExpressions.buildExpression(allKeyConditions);
 
     //*Step 1: create key condition expression
     if (keyConditionExpression.expression) {
@@ -245,7 +245,7 @@ export class QueryBuilder<
 
     //*Step 2: create filter expression
     if (this.filterConditions.length > 0) {
-      const filterExpression = QueryExpressions.buildFilterExpression(this.filterConditions);
+      const filterExpression = QueryExpressions.buildExpression(this.filterConditions);
       if (filterExpression.expression) {
         request.FilterExpression = filterExpression.expression;
 
@@ -288,9 +288,31 @@ export class QueryBuilder<
   }
 
 
+  /**
+   * Returns all currently used value keys from both key conditions and filter expressions.
+   * 
+   * This method extracts all attribute value keys (like `:value_0`, `:name_1`, `:age_between_min`) 
+   * that are already in use across all conditions. It's used to avoid conflicts when generating 
+   * new unique value keys for additional conditions.
+   * 
+   * @returns Array of existing value keys used in expressions
+   * 
+   * @example
+   * ```typescript
+   * // After building query with conditions:
+   * // .query({ id: 'user-1' })           // Uses :id
+   * // .filter('name').eq('John')         // Uses :name_0  
+   * // .filter('age').between(18, 65)     // Uses :age_between_min, :age_between_max
+   * 
+   * const existingKeys = this.getExistingValueKeys();
+   * // Returns: [':id', ':name_0', ':age_between_min', ':age_between_max']
+   * 
+   * // Next condition will avoid these keys and use :status_0, :status_1, etc.
+   * ```
+   */
   private getExistingValueKeys(): string[] {
-    const keyExpr = QueryExpressions.buildKeyCondition(this.keyConditions);
-    const filterExpr = QueryExpressions.buildFilterExpression(this.filterConditions);
+    const keyExpr = QueryExpressions.buildExpression(this.keyConditions);
+    const filterExpr = QueryExpressions.buildExpression(this.filterConditions);
 
     return [
       ...Object.keys(keyExpr.attributeValues),

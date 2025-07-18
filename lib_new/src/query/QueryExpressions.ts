@@ -37,24 +37,7 @@ type OperatorValueMap = {
 // biome-ignore lint/complexity/noStaticOnlyClass: <explanation>
 export class QueryExpressions {
 
-  static buildKeyCondition(conditions: ConditionExpression[]): DynamoDBExpression {
-    if (conditions.length === 0) {
-      return {
-        expression: '',
-        attributeNames: {},
-        attributeValues: {}
-      };
-    }
-
-    const expressions = conditions.map(c => `(${c.expression})`);
-    return {
-      expression: expressions.join(' AND '),
-      attributeNames: QueryExpressions.mergeAttributeNames(conditions),
-      attributeValues: QueryExpressions.mergeAttributeValues(conditions)
-    };
-  }
-
-  static buildFilterExpression(conditions: ConditionExpression[]): DynamoDBExpression {
+  static buildExpression(conditions: ConditionExpression[]): DynamoDBExpression {
     if (conditions.length === 0) {
       return {
         expression: '',
@@ -235,6 +218,12 @@ export class QueryExpressions {
    * const baseName = 'value';
    * const uniqueKey = QueryExpressions.generateUniqueValueKey(baseName, existingKeys);
    * // Returns ':value_0'
+   * 
+   * @example
+   * const existingKeys = [':value_0', ':value_1', ':value_2'];
+   * const baseName = 'value';
+   * const uniqueKey = QueryExpressions.generateUniqueValueKey(baseName, existingKeys);
+   * // Returns ':value_3'
    */
   private static generateUniqueValueKey(baseName: string, existingKeys: string[]): string {
     let counter = 0;

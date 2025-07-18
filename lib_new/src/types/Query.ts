@@ -1,8 +1,8 @@
-import type { z } from 'zod';
 import type { NativeAttributeValue, QueryCommandInput } from '@aws-sdk/lib-dynamodb';
+import type { z } from 'zod';
 
 // QueryOptions that map directly to QueryCommandInput properties
-export interface QueryOptions extends Pick<QueryCommandInput, 
+export interface QueryOptions extends Pick<QueryCommandInput,
   'ConsistentRead' | 'Limit' | 'ScanIndexForward' | 'ProjectionExpression' | 'ReturnConsumedCapacity'
 > {
   // Use NativeAttributeValue for pagination keys to match AWS SDK
@@ -38,6 +38,15 @@ export interface ConditionExpression {
   attributeValues: Record<string, NativeAttributeValue>;
 }
 
+/**
+ * @example
+ * ```typescript
+ * const expression: DynamoDBExpression = {
+ *   expression: 'attribute_exists(name) AND name = :name',
+ *   attributeNames: { '#name': 'name' },
+ *   attributeValues: { ':name': 'John' }
+ * };
+ */
 export interface DynamoDBExpression {
   expression: string;
   attributeNames: Record<string, string>;
@@ -47,13 +56,13 @@ export interface DynamoDBExpression {
 export type SchemaKeys<T extends z.ZodObject<any>> = keyof z.infer<T>;
 
 // Type-safe value type that matches NativeAttributeValue but with better inference
-export type TypedNativeValue<T> = T extends string 
-  ? string 
-  : T extends number 
-  ? number 
-  : T extends boolean 
-  ? boolean 
-  : T extends Array<infer U> 
+export type TypedNativeValue<T> = T extends string
+  ? string
+  : T extends number
+  ? number
+  : T extends boolean
+  ? boolean
+  : T extends Array<infer U>
   ? Array<TypedNativeValue<U>>
   : T extends Record<string, any>
   ? { [K in keyof T]: TypedNativeValue<T[K]> }

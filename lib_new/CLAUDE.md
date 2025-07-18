@@ -47,18 +47,27 @@ All commands should be run from the `lib_new/` directory:
 - **Features**: Automatic timestamp handling, schema validation, composite key support
 
 #### QueryBuilder (`src/query/QueryBuilder.ts`)
-- **Purpose**: Fluent API for building DynamoDB queries with conditions and options
+- **Purpose**: Fluent API for building DynamoDB queries with conditions and options using AWS SDK v3 native types
 - **Key Methods**:
-  - `where(fieldName)` - Add key condition for range key or additional key fields
-  - `filter(fieldName)` - Add filter condition for non-key fields
+  - `where(fieldName)` - Add key conditions (returns type-aware condition builder)
+  - `filter(fieldName)` - Add filter conditions for non-key fields (returns type-aware condition builder)
   - `usingIndex(indexName)` - Query using a secondary index
   - `limit(count)` - Limit number of items returned
-  - `ascending()` / `descending()` - Control sort order
-  - `consistentRead()` - Enable consistent reads
-  - `exec()` - Execute query and return results
-  - `execWithPagination()` - Execute with pagination support
-  - `stream()` - Stream results for large datasets
-- **Features**: Automatic key condition generation, filter expressions, index support
+  - `ascending()` / `descending()` - Control sort order (ScanIndexForward)
+  - `consistentRead(enabled?)` - Enable/disable consistent reads
+  - `startKey(key)` - Set pagination start key (ExclusiveStartKey)
+  - `projectionExpression(expression)` - Specify attributes to return
+  - `returnConsumedCapacity(level)` - Return capacity consumption info
+  - `loadAll()` - Load all pages automatically (use with caution)
+  - `exec()` - Execute query and return items array
+  - `execWithPagination(lastKey?)` - Execute with pagination support
+  - `stream()` - Stream results for large datasets (AsyncIterableIterator)
+- **Features**: 
+  - Type-safe field validation with Zod schema inference
+  - Automatic expression building with native AWS SDK types
+  - Separate condition classes for strings vs other types
+  - Native value support (no manual AttributeValue conversion)
+  - Comprehensive operator support (eq, gt, lt, between, in, contains, beginsWith, exists, etc.)
 
 #### TableManager (`src/TableManager.ts`)
 - **Purpose**: Handles DynamoDB table lifecycle operations
@@ -102,11 +111,13 @@ const User = factory.defineModel({
 - Type-safe CRUD operations
 
 #### Flexible Query Design
-- `query(keyValues)` accepts any key-value pairs and generates `eq` conditions automatically
-- No distinction between hash/range keys - all provided keys become equality conditions
-- Use `where()` for additional key conditions (range key operations like `beginsWith`, `between`)
-- Use `filter()` for non-key attribute filtering
+- `query(keyValues)` accepts any key-value pairs and generates `eq` conditions automatically for KeyConditionExpression
+- No distinction between hash/range keys - all provided keys become equality conditions in the key condition
+- Use `where()` for additional key conditions (range key operations like `beginsWith`, `between`, `gt`, `lt`, etc.)
+- Use `filter()` for non-key attribute filtering (goes into FilterExpression)
 - Supports partial key queries for composite key models
+- Type-safe field access with schema validation - only fields from Zod schema are allowed
+- Automatic type inference for condition operators based on field types (string fields get `beginsWith()`, `contains()`, etc.)
 
 ### Configuration Options
 
@@ -125,11 +136,33 @@ const User = factory.defineModel({
 - `createdAt` set once on creation
 - `updatedAt` updated on every modification
 
+### Architecture Details
+
+#### Query System Architecture
+The query system is built with multiple specialized components:
+
+1. **QueryBuilder** (`src/query/QueryBuilder.ts`) - Main fluent interface
+2. **QueryConditions** (`src/query/QueryConditions.ts`) - Type-aware condition builders
+3. **QueryExpressions** (`src/query/QueryExpressions.ts`) - Expression compilation
+4. **Query Types** (`src/types/Query.ts`) - TypeScript type definitions
+
+#### Type Safety Features
+- **Schema-based validation**: Only fields defined in Zod schema can be queried
+- **Type-aware operators**: String fields get `beginsWith()`, `contains()`, numeric fields get range operations
+- **Native value support**: Direct JavaScript types, no manual AttributeValue conversion
+- **AWS SDK integration**: Uses `QueryCommandInput` and `NativeAttributeValue` types directly
+
+#### Expression Building
+- **Automatic key conditions**: `query(keyValues)` generates equality conditions for KeyConditionExpression
+- **Separate filter handling**: `filter()` conditions go into FilterExpression  
+- **Unique value keys**: Automatic generation of `:value_0`, `:value_1` to avoid conflicts
+- **Attribute name escaping**: Uses `#fieldName` syntax for reserved word safety
+
 ### Dependencies
 
 #### Core Dependencies
 - **@aws-sdk/client-dynamodb** v3 - Core DynamoDB client
-- **@aws-sdk/lib-dynamodb** v3 - Document client for simplified operations
+- **@aws-sdk/lib-dynamodb** v3 - Document client for simplified operations with native values
 - **zod** - Runtime schema validation and TypeScript type inference
 
 #### Development Dependencies
@@ -250,6 +283,14 @@ const activeUsers = await User.query({ id: 'user-1' })
 const electronicProducts = await Product.query({ productId: 'prod-1' })
   .where('category').beginsWith('elect')
   .exec();
+
+// Query with multiple operators on different field types
+const complexQuery = await Product.query({ productId: 'prod-1' })
+  .where('category').beginsWith('electronics')  // String field gets string methods
+  .filter('price').between(100, 500)            // Number field gets numeric methods
+  .filter('inStock').eq(true)                   // Boolean field gets equality methods
+  .filter('tags').contains('featured')          // String field for array/substring contains
+  .exec();
 ```
 
 #### Query Options
@@ -260,6 +301,8 @@ const results = await User.query({ id: 'user-1' })
   .limit(10)
   .ascending()
   .consistentRead(true)
+  .projectionExpression('id, #name, email')  // Specify attributes to return
+  .returnConsumedCapacity('TOTAL')           // Get capacity consumption info
   .exec();
 
 // Paginated query
@@ -270,20 +313,34 @@ const page = await User.query({ id: 'user-1' })
 console.log('Items:', page.items);
 console.log('Last key:', page.lastEvaluatedKey);
 console.log('Count:', page.count);
+console.log('Scanned count:', page.scannedCount);
+console.log('Consumed capacity:', page.consumedCapacity);
+
+// Continue pagination with startKey
+const nextPage = await User.query({ id: 'user-1' })
+  .startKey(page.lastEvaluatedKey)
+  .limit(10)
+  .execWithPagination();
 ```
 
 #### Streaming Large Result Sets
 ```typescript
 // Stream results for large datasets
-for await (const batch of User.query({ status: 'active' }).stream()) {
+for await (const batch of User.query({ id: 'user-1' }).stream()) {
   console.log(`Processing batch of ${batch.length} items`);
-  // Process each batch
+  // Process each batch of items
+  for (const item of batch) {
+    console.log(`Processing user: ${item.name}`);
+  }
 }
 
 // Load all results at once (use with caution for large datasets)
-const allResults = await User.query({ status: 'active' })
+const allResults = await User.query({ id: 'user-1' })
+  .filter('status').eq('active')
   .loadAll()
   .exec();
+
+console.log(`Found ${allResults.length} active users`);
 ```
 
 #### Index Queries
@@ -307,6 +364,24 @@ const recentActiveUsers = await User.query({ status: 'active' })
 3. **Testing**: Write tests using Vitest with TypeScript support
 4. **Type Safety**: Leverage TypeScript's strict mode and Zod inference
 5. **Build**: Compile TypeScript to dist/ directory for distribution
+
+## Implementation Status
+
+### Completed Features ✅
+- **QueryBuilder** - Full implementation with fluent API
+- **Type-safe conditions** - String/numeric/boolean field type awareness  
+- **Expression building** - Automatic KeyConditionExpression and FilterExpression generation
+- **AWS SDK v3 integration** - Native value support with QueryCommandInput
+- **Pagination support** - execWithPagination(), startKey(), stream()
+- **Index queries** - usingIndex() with full condition support
+- **Schema validation** - Zod-based field validation and result parsing
+
+### Architecture Highlights
+- **Type Safety**: Full TypeScript support with Zod schema inference
+- **Native Values**: Uses AWS SDK's `NativeAttributeValue` - no manual conversion needed
+- **Modular Design**: Separate classes for QueryBuilder, QueryConditions, and QueryExpressions
+- **Field Type Awareness**: String fields automatically get `beginsWith()`, `contains()` methods
+- **Expression Safety**: Automatic attribute name escaping and unique value key generation
 
 ## Important Notes
 
