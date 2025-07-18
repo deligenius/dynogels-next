@@ -220,9 +220,9 @@ export class QueryExpressions {
   }
 
   private static mergeAttributeValues(conditions: ConditionExpression[]): Record<string, NativeAttributeValue> {
-    const merged: Record<string, NativeAttributeValue> = {};
+    let merged: Record<string, NativeAttributeValue> = {};
     for (const condition of conditions) {
-      Object.assign(merged, condition.attributeValues);
+      merged = { ...merged, ...condition.attributeValues }
     }
     return merged;
   }

@@ -146,8 +146,12 @@ export class QueryBuilder<
     return result.items;
   }
 
-  async execWithPagination(): Promise<QueryResult<z.infer<TSchema>>> {
+  async execWithPagination(lastEvaluatedKey?: Record<string, any>): Promise<QueryResult<z.infer<TSchema>>> {
     const request = this.buildRequest();
+
+    if (lastEvaluatedKey) {
+      request.ExclusiveStartKey = lastEvaluatedKey;
+    }
 
     try {
       const response = await this.client.query(request);
@@ -168,22 +172,13 @@ export class QueryBuilder<
     }
   }
 
-  async *stream(): AsyncIterableIterator<z.infer<TSchema>> {
+  async *stream(): AsyncIterableIterator<z.infer<TSchema>[]> {
     let lastEvaluatedKey = this.options.ExclusiveStartKey;
 
     do {
-      const currentQuery = new QueryBuilder(this.client, this.config, this.hashKeyValue);
+      const result = await this.execWithPagination(lastEvaluatedKey);
 
-      currentQuery.keyConditions = [...this.keyConditions];
-      currentQuery.filterConditions = [...this.filterConditions];
-      currentQuery.options = { ...this.options, ExclusiveStartKey: lastEvaluatedKey };
-      currentQuery.indexName = this.indexName;
-
-      const result = await currentQuery.execWithPagination();
-
-      for (const item of result.items) {
-        yield item;
-      }
+      yield result.items;
 
       lastEvaluatedKey = result.lastEvaluatedKey;
     } while (lastEvaluatedKey);
@@ -234,24 +229,20 @@ export class QueryBuilder<
 
     const keyConditionExpression = QueryExpressions.buildKeyCondition(allKeyConditions);
 
+    //*Step 1: create key condition expression
     if (keyConditionExpression.expression) {
       request.KeyConditionExpression = keyConditionExpression.expression;
 
       if (Object.keys(keyConditionExpression.attributeNames).length > 0) {
-        request.ExpressionAttributeNames = {
-          ...request.ExpressionAttributeNames,
-          ...keyConditionExpression.attributeNames
-        };
+        request.ExpressionAttributeNames = keyConditionExpression.attributeNames;
       }
 
       if (Object.keys(keyConditionExpression.attributeValues).length > 0) {
-        request.ExpressionAttributeValues = {
-          ...request.ExpressionAttributeValues,
-          ...keyConditionExpression.attributeValues
-        };
+        request.ExpressionAttributeValues = keyConditionExpression.attributeValues;
       }
     }
 
+    //*Step 2: create filter expression
     if (this.filterConditions.length > 0) {
       const filterExpression = QueryExpressions.buildFilterExpression(this.filterConditions);
       if (filterExpression.expression) {
