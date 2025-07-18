@@ -96,13 +96,12 @@ async function main() {
     );
     console.log('Updated user:', { id: updatedUser.id, score: updatedUser.score, department: updatedUser.department });
 
+    // Query users
+    console.log('\n📝 Query users:');
+    const queryResult = await User.query({ id: 'user1' }).filter('name').eq('Alice Johnson').exec();
+    console.log('Query result:', queryResult);
 
-    console.log('\n✅ Demo completed successfully!');
-    console.log('\n📊 Summary:');
-    console.log('- Created 5 users with automatic timestamps');
-    console.log('- Demonstrated get single user');
-    console.log('- Demonstrated batch get multiple users');
-    console.log('- Showed update operation with automatic updatedAt');
+    // Query users with filter
 
   } catch (error) {
     console.error('❌ Demo failed:', error);

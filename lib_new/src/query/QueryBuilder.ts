@@ -32,7 +32,7 @@ export class QueryBuilder<
       hashKey: THashKey;
       rangeKey?: TRangeKey;
     },
-    private readonly hashKeyValue: z.infer<TSchema>[THashKey]
+    private readonly keyValues: Partial<z.infer<TSchema>>
   ) { }
 
   where<TField extends SchemaKeys<TSchema>>(
@@ -224,8 +224,9 @@ export class QueryBuilder<
       request.IndexName = this.indexName;
     }
 
-    const hashKeyCondition = this.buildHashKeyCondition();
-    const allKeyConditions = [hashKeyCondition, ...this.keyConditions];
+    // Build key conditions directly from keyValues
+    const keyConditions = this.buildKeyConditions();
+    const allKeyConditions = [...keyConditions, ...this.keyConditions];
 
     const keyConditionExpression = QueryExpressions.buildKeyCondition(allKeyConditions);
 
@@ -267,33 +268,25 @@ export class QueryBuilder<
     return request;
   }
 
-  private buildHashKeyCondition(): ConditionExpression {
-    const hashKeyField = this.indexName
-      ? this.getIndexHashKey()
-      : String(this.config.hashKey);
+  private buildKeyConditions(): ConditionExpression[] {
+    const conditions: ConditionExpression[] = [];
+    const existingKeys = this.getExistingValueKeys();
 
-    return QueryExpressions.createCondition(
-      hashKeyField,
-      '=',
-      this.hashKeyValue as NativeAttributeValue,
-      this.getExistingValueKeys()
-    );
-  }
-
-  private getIndexHashKey(): string {
-    if (!this.indexName) {
-      return String(this.config.hashKey);
+    // Generate eq conditions for all provided key values
+    for (const [fieldName, value] of Object.entries(this.keyValues)) {
+      if (value !== undefined) {
+        conditions.push(QueryExpressions.createCondition(
+          fieldName,
+          '=',
+          value as NativeAttributeValue,
+          existingKeys
+        ));
+      }
     }
 
-    const indexes = this.config.indexes || {};
-    const index = indexes[this.indexName];
-
-    if (!index) {
-      throw new Error(`Index '${this.indexName}' not found on table '${this.config.tableName}'`);
-    }
-
-    return index.hashKey;
+    return conditions;
   }
+
 
   private getExistingValueKeys(): string[] {
     const keyExpr = QueryExpressions.buildKeyCondition(this.keyConditions);

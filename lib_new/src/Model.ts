@@ -162,8 +162,8 @@ export class Model<
     }
   }
 
-  query(hashKeyValue: z.infer<TSchema>[THashKey]): QueryBuilder<TSchema, THashKey, TRangeKey> {
-    return new QueryBuilder(this.client, this.config, hashKeyValue);
+  query(keyValues: Partial<z.infer<TSchema>>): QueryBuilder<TSchema, THashKey, TRangeKey> {
+    return new QueryBuilder(this.client, this.config, keyValues);
   }
 
   private getTimestamps(createdAt?: string, updatedAt?: string) {
