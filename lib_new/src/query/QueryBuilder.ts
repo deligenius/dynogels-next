@@ -4,7 +4,8 @@ import type {
 	QueryCommandInput,
 } from "@aws-sdk/lib-dynamodb";
 import { z } from "zod";
-import type { ModelConfig } from "../types/Model.js";
+import { GSIValidationError, IndexNotFoundError } from "../errors/DynamoDBError.js";
+import type { IndexInfo, IndexNames, ModelConfig } from "../types/Model.js";
 import type {
 	ConditionExpression,
 	QueryOptions,
@@ -23,6 +24,7 @@ export class QueryBuilder<
 	TSchema extends z.ZodObject<any>,
 	THashKey extends keyof z.infer<TSchema>,
 	TRangeKey extends keyof z.infer<TSchema> | undefined = undefined,
+	TConfig extends ModelConfig<TSchema> = ModelConfig<TSchema>
 > {
 	private keyConditions: ConditionExpression[] = [];
 	private filterConditions: ConditionExpression[] = [];
@@ -32,26 +34,13 @@ export class QueryBuilder<
 
 	constructor(
 		private readonly client: DynamoDBDocument,
-		private readonly config: ModelConfig<TSchema> & {
-			hashKey: THashKey;
-			rangeKey?: TRangeKey;
-		},
+		private readonly config: TConfig,
 		private readonly keyValues: Partial<z.infer<TSchema>>,
-	) {}
+	) { }
 
 	where<TField extends SchemaKeys<TSchema>>(
 		fieldName: TField,
-	): z.infer<TSchema>[TField] extends string
-		? StringQueryConditions<
-				TSchema,
-				TField,
-				QueryBuilder<TSchema, THashKey, TRangeKey>
-			>
-		: QueryConditions<
-				TSchema,
-				TField,
-				QueryBuilder<TSchema, THashKey, TRangeKey>
-			> {
+	): any {
 		const existingKeys = this.getExistingValueKeys();
 		const addCondition = (condition: ConditionExpression) => {
 			this.keyConditions.push(condition);
@@ -63,29 +52,29 @@ export class QueryBuilder<
 				String(fieldName),
 				addCondition,
 				existingKeys,
-			) as any;
+			);
 		}
 
 		return new QueryConditions(
 			String(fieldName),
 			addCondition,
 			existingKeys,
-		) as any;
+		);
 	}
 
 	filter<TField extends SchemaKeys<TSchema>>(
 		fieldName: TField,
 	): z.infer<TSchema>[TField] extends string
 		? StringFilterConditions<
-				TSchema,
-				TField,
-				QueryBuilder<TSchema, THashKey, TRangeKey>
-			>
+			TSchema,
+			TField,
+			QueryBuilder<TSchema, THashKey, TRangeKey>
+		>
 		: FilterConditions<
-				TSchema,
-				TField,
-				QueryBuilder<TSchema, THashKey, TRangeKey>
-			> {
+			TSchema,
+			TField,
+			QueryBuilder<TSchema, THashKey, TRangeKey>
+		> {
 		const existingKeys = this.getExistingValueKeys();
 		const addCondition = (condition: ConditionExpression) => {
 			this.filterConditions.push(condition);
@@ -107,8 +96,8 @@ export class QueryBuilder<
 		) as any;
 	}
 
-	usingIndex(indexName: string): this {
-		this.indexName = indexName;
+	usingIndex<TIndexName extends IndexNames<TConfig>>(indexName: TIndexName): this {
+		this.indexName = indexName as string;
 		return this;
 	}
 
@@ -137,11 +126,6 @@ export class QueryBuilder<
 
 	startKey(key: Record<string, NativeAttributeValue>): this {
 		this.options.ExclusiveStartKey = key;
-		return this;
-	}
-
-	projectionExpression(expression: string): this {
-		this.options.ProjectionExpression = expression;
 		return this;
 	}
 
@@ -350,7 +334,7 @@ export class QueryBuilder<
 
 	private isStringField(fieldName: SchemaKeys<TSchema>): boolean {
 		try {
-			const schemaShape = this.config.schema.shape as z.ZodObject<any>;
+			const schemaShape = this.config.schema.shape;
 			const field = schemaShape[fieldName as keyof typeof schemaShape];
 
 			if (!field || typeof field._def !== "object") {
@@ -362,6 +346,7 @@ export class QueryBuilder<
 			return false;
 		}
 	}
+
 
 	private validateAndTransform(item: any): z.infer<TSchema> {
 		try {

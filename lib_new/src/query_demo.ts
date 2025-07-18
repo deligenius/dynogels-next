@@ -263,7 +263,7 @@ async function main() {
       .exec();
     console.log(
       `Posts with postId beginning with 'post':`,
-      postQuery3.map((p) => ({ postId: p.postId, title: p.title })),
+      postQuery3.map((p: any) => ({ postId: p.postId, title: p.title })),
     );
 
     // String contains (filter)
@@ -439,7 +439,7 @@ async function main() {
       .exec();
     console.log(
       "Featured posts with >1000 views:",
-      postQuery8.map((p) => ({
+      postQuery8.map((p: any) => ({
         postId: p.postId,
         title: p.title,
         views: p.views,

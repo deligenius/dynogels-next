@@ -3,9 +3,13 @@ import {
 	DeleteTableCommand,
 	DescribeTableCommand,
 	type DynamoDBClient,
+	type GlobalSecondaryIndex,
+	type LocalSecondaryIndex,
+	type Projection,
 	ResourceInUseException,
 	ResourceNotFoundException,
 	type ScalarAttributeType,
+	UpdateTableCommand,
 } from "@aws-sdk/client-dynamodb";
 import { z } from "zod";
 import type { Model } from "./Model.js";
@@ -13,10 +17,20 @@ import {
 	ResourceInUseError,
 	ResourceNotFoundError,
 } from "./errors/DynamoDBError.js";
-import type { ModelConfig } from "./types/Model.js";
+import type { GSIConfig, ModelConfig } from "./types/Model.js";
+
+// GSI status reporting interface
+export interface GSIStatusReport {
+	indexName: string;
+	status: string;
+	itemCount: number;
+	sizeBytes: number;
+	backfilling: boolean;
+	throughput: { read: number; write: number };
+}
 
 export class TableManager {
-	constructor(private readonly client: DynamoDBClient) {}
+	constructor(private readonly client: DynamoDBClient) { }
 
 	async createTable<TSchema extends z.ZodObject<any>>(
 		model: Model<TSchema, any, any>,
@@ -32,6 +46,8 @@ export class TableManager {
 					ReadCapacityUnits: throughput.read,
 					WriteCapacityUnits: throughput.write,
 				},
+				GlobalSecondaryIndexes: this.buildGlobalSecondaryIndexes(config),
+				LocalSecondaryIndexes: this.buildLocalSecondaryIndexes(config),
 			});
 
 			await this.client.send(command);
@@ -71,6 +87,77 @@ export class TableManager {
 		}
 	}
 
+	// GSI management methods
+	async addGSI<TSchema extends z.ZodObject<any>>(
+		tableName: string,
+		indexName: string,
+		gsiConfig: GSIConfig<TSchema>
+	): Promise<void> {
+		const updateCommand = new UpdateTableCommand({
+			TableName: tableName,
+			GlobalSecondaryIndexUpdates: [{
+				Create: {
+					IndexName: indexName,
+					KeySchema: [
+						{
+							AttributeName: String(gsiConfig.hashKey),
+							KeyType: 'HASH',
+						},
+						...(gsiConfig.rangeKey ? [{
+							AttributeName: String(gsiConfig.rangeKey),
+							KeyType: 'RANGE' as const,
+						}] : []),
+					],
+					Projection: this.buildProjection(gsiConfig.projectionType, gsiConfig.projectedAttributes),
+					ProvisionedThroughput: {
+						ReadCapacityUnits: gsiConfig.throughput?.read || 1,
+						WriteCapacityUnits: gsiConfig.throughput?.write || 1,
+					},
+				},
+			}],
+		});
+
+		await this.client.send(updateCommand);
+	}
+
+	async removeGSI(tableName: string, indexName: string): Promise<void> {
+		const updateCommand = new UpdateTableCommand({
+			TableName: tableName,
+			GlobalSecondaryIndexUpdates: [{
+				Delete: {
+					IndexName: indexName,
+				},
+			}],
+		});
+
+		await this.client.send(updateCommand);
+	}
+
+	async getGSIStatus(tableName: string): Promise<GSIStatusReport[]> {
+		const describeCommand = new DescribeTableCommand({ TableName: tableName });
+		const response = await this.client.send(describeCommand);
+
+		const gsiReports: GSIStatusReport[] = [];
+		const gsis = response.Table?.GlobalSecondaryIndexes;
+		if (gsis) {
+			for (const gsi of gsis) {
+				gsiReports.push({
+					indexName: gsi.IndexName ?? "",
+					status: gsi.IndexStatus ?? "",
+					itemCount: gsi.ItemCount || 0,
+					sizeBytes: gsi.IndexSizeBytes || 0,
+					backfilling: gsi.IndexStatus === 'CREATING',
+					throughput: {
+						read: gsi.ProvisionedThroughput?.ReadCapacityUnits || 0,
+						write: gsi.ProvisionedThroughput?.WriteCapacityUnits || 0
+					}
+				});
+			}
+		}
+
+		return gsiReports;
+	}
+
 	private buildKeySchema<TSchema extends z.ZodObject<any>>(
 		config: ModelConfig<TSchema> & {
 			hashKey: string;
@@ -100,25 +187,102 @@ export class TableManager {
 			rangeKey?: string;
 		},
 	): CreateTableCommand["input"]["AttributeDefinitions"] {
-		const attrs = [
-			{
-				AttributeName: String(config.hashKey),
-				AttributeType: this.getAttributeType(
-					config.schema.shape[config.hashKey],
-				),
-			},
-		];
+		const attributes = new Set<string>();
 
+		// Add table keys
+		attributes.add(String(config.hashKey));
 		if (config.rangeKey) {
-			attrs.push({
-				AttributeName: String(config.rangeKey),
-				AttributeType: this.getAttributeType(
-					config.schema.shape[config.rangeKey],
-				),
-			});
+			attributes.add(String(config.rangeKey));
 		}
 
-		return attrs;
+		// Add GSI keys
+		if (config.globalSecondaryIndexes) {
+			for (const gsiConfig of Object.values(config.globalSecondaryIndexes)) {
+				attributes.add(String(gsiConfig.hashKey));
+				if (gsiConfig.rangeKey) {
+					attributes.add(String(gsiConfig.rangeKey));
+				}
+			}
+		}
+
+		// Add LSI keys
+		if (config.localSecondaryIndexes) {
+			for (const lsiConfig of Object.values(config.localSecondaryIndexes)) {
+				attributes.add(String(lsiConfig.rangeKey));
+			}
+		}
+
+		return Array.from(attributes).map(attr => ({
+			AttributeName: attr,
+			AttributeType: this.getAttributeType(config.schema.shape[attr]),
+		}));
+	}
+
+	private buildGlobalSecondaryIndexes<TSchema extends z.ZodObject<any>>(
+		config: ModelConfig<TSchema>
+	): GlobalSecondaryIndex[] | undefined {
+		if (!config.globalSecondaryIndexes || Object.keys(config.globalSecondaryIndexes).length === 0) {
+			return undefined;
+		}
+
+		return Object.entries(config.globalSecondaryIndexes).map(([indexName, gsiConfig]) => ({
+			IndexName: indexName,
+			KeySchema: [
+				{
+					AttributeName: String(gsiConfig.hashKey),
+					KeyType: 'HASH',
+				},
+				...(gsiConfig.rangeKey ? [{
+					AttributeName: String(gsiConfig.rangeKey),
+					KeyType: 'RANGE' as const,
+				}] : []),
+			],
+			Projection: this.buildProjection(gsiConfig.projectionType, gsiConfig.projectedAttributes),
+			ProvisionedThroughput: {
+				ReadCapacityUnits: gsiConfig.throughput?.read || 1,
+				WriteCapacityUnits: gsiConfig.throughput?.write || 1,
+			},
+		}));
+	}
+
+	private buildLocalSecondaryIndexes<TSchema extends z.ZodObject<any>>(
+		config: ModelConfig<TSchema> & {
+			hashKey: string;
+		}
+	): LocalSecondaryIndex[] | undefined {
+		if (!config.localSecondaryIndexes || Object.keys(config.localSecondaryIndexes).length === 0) {
+			return undefined;
+		}
+
+		return Object.entries(config.localSecondaryIndexes).map(([indexName, lsiConfig]) => ({
+			IndexName: indexName,
+			KeySchema: [
+				{
+					AttributeName: String(config.hashKey), // LSI uses table's hash key
+					KeyType: 'HASH',
+				},
+				{
+					AttributeName: String(lsiConfig.rangeKey),
+					KeyType: 'RANGE',
+				},
+			],
+			Projection: this.buildProjection(lsiConfig.projectionType, lsiConfig.projectedAttributes),
+		}));
+	}
+
+	private buildProjection(
+		projectionType: 'ALL' | 'KEYS_ONLY' | 'INCLUDE',
+		projectedAttributes?: (string | number | symbol)[]
+	): Projection {
+		const projection: Projection = {
+			ProjectionType: projectionType,
+		};
+
+		if (projectionType === 'INCLUDE' && projectedAttributes?.length) {
+			projection.NonKeyAttributes = projectedAttributes.map(String);
+		}
+
+		return projection;
 	}
 
 	private getAttributeType(zodType: z.ZodType): ScalarAttributeType {
