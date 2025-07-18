@@ -19,11 +19,8 @@ A modern TypeScript rewrite of dynogels, providing a fluent API for DynamoDB ope
 ### Installation
 
 ```bash
-# Navigate to the new TypeScript implementation
-cd lib_new
-
 # Install dependencies
-npm install
+npm install dynogels-next
 ```
 
 ### Basic Usage
