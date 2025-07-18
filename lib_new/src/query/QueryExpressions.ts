@@ -72,61 +72,62 @@ export class QueryExpressions {
   }
 
   static createCondition<T extends QueryOperator>(
-    fieldName: string,
+    key: string,
     operator: T,
     value: OperatorValueMap[T],
     existingValueKeys: string[] = []
   ): ConditionExpression {
-    const attributeName = `#${fieldName}`;
-    const attributeValue = QueryExpressions.generateUniqueValueKey(fieldName, existingValueKeys);
+    const haskKey = `#${key}` as const;
+    /** ":value_0" */
+    const colonValue = QueryExpressions.generateUniqueValueKey(key, existingValueKeys);
 
     switch (operator.toLowerCase()) {
       case '=':
       case 'equals':
         return {
-          expression: `${attributeName} = ${attributeValue}`,
-          attributeNames: { [attributeName]: fieldName },
-          attributeValues: { [attributeValue]: QueryExpressions.formatValue(value) }
+          expression: `${haskKey} = ${colonValue}`,
+          attributeNames: { [haskKey]: key },
+          attributeValues: { [colonValue]: QueryExpressions.formatValue(value) }
         };
 
       case '<>':
       case 'ne':
         return {
-          expression: `${attributeName} <> ${attributeValue}`,
-          attributeNames: { [attributeName]: fieldName },
-          attributeValues: { [attributeValue]: QueryExpressions.formatValue(value) }
+          expression: `${haskKey} <> ${colonValue}`,
+          attributeNames: { [haskKey]: key },
+          attributeValues: { [colonValue]: QueryExpressions.formatValue(value) }
         };
 
       case '<':
       case 'lt':
         return {
-          expression: `${attributeName} < ${attributeValue}`,
-          attributeNames: { [attributeName]: fieldName },
-          attributeValues: { [attributeValue]: QueryExpressions.formatValue(value) }
+          expression: `${haskKey} < ${colonValue}`,
+          attributeNames: { [haskKey]: key },
+          attributeValues: { [colonValue]: QueryExpressions.formatValue(value) }
         };
 
       case '<=':
       case 'lte':
         return {
-          expression: `${attributeName} <= ${attributeValue}`,
-          attributeNames: { [attributeName]: fieldName },
-          attributeValues: { [attributeValue]: QueryExpressions.formatValue(value) }
+          expression: `${haskKey} <= ${colonValue}`,
+          attributeNames: { [haskKey]: key },
+          attributeValues: { [colonValue]: QueryExpressions.formatValue(value) }
         };
 
       case '>':
       case 'gt':
         return {
-          expression: `${attributeName} > ${attributeValue}`,
-          attributeNames: { [attributeName]: fieldName },
-          attributeValues: { [attributeValue]: QueryExpressions.formatValue(value) }
+          expression: `${haskKey} > ${colonValue}`,
+          attributeNames: { [haskKey]: key },
+          attributeValues: { [colonValue]: QueryExpressions.formatValue(value) }
         };
 
       case '>=':
       case 'gte':
         return {
-          expression: `${attributeName} >= ${attributeValue}`,
-          attributeNames: { [attributeName]: fieldName },
-          attributeValues: { [attributeValue]: QueryExpressions.formatValue(value) }
+          expression: `${haskKey} >= ${colonValue}`,
+          attributeNames: { [haskKey]: key },
+          attributeValues: { [colonValue]: QueryExpressions.formatValue(value) }
         };
 
       case 'between':
@@ -136,12 +137,12 @@ export class QueryExpressions {
         // biome-ignore lint/correctness/noSwitchDeclarations: <explanation>
         const [min, max] = value as [any, any];
         // biome-ignore lint/correctness/noSwitchDeclarations: <explanation>
-        const attributeValue1 = QueryExpressions.generateUniqueValueKey(`${fieldName}_min`, existingValueKeys);
+        const attributeValue1 = QueryExpressions.generateUniqueValueKey(`${key}_min`, existingValueKeys);
         // biome-ignore lint/correctness/noSwitchDeclarations: <explanation>
-        const attributeValue2 = QueryExpressions.generateUniqueValueKey(`${fieldName}_max`, existingValueKeys);
+        const attributeValue2 = QueryExpressions.generateUniqueValueKey(`${key}_max`, existingValueKeys);
         return {
-          expression: `${attributeName} BETWEEN ${attributeValue1} AND ${attributeValue2}`,
-          attributeNames: { [attributeName]: fieldName },
+          expression: `${haskKey} BETWEEN ${attributeValue1} AND ${attributeValue2}`,
+          attributeNames: { [haskKey]: key },
           attributeValues: {
             [attributeValue1]: QueryExpressions.formatValue(min),
             [attributeValue2]: QueryExpressions.formatValue(max)
@@ -151,24 +152,24 @@ export class QueryExpressions {
       case 'begins_with':
       case 'beginswith':
         return {
-          expression: `begins_with(${attributeName}, ${attributeValue})`,
-          attributeNames: { [attributeName]: fieldName },
-          attributeValues: { [attributeValue]: QueryExpressions.formatValue(value) }
+          expression: `begins_with(${haskKey}, ${colonValue})`,
+          attributeNames: { [haskKey]: key },
+          attributeValues: { [colonValue]: QueryExpressions.formatValue(value) }
         };
 
       case 'contains':
         return {
-          expression: `contains(${attributeName}, ${attributeValue})`,
-          attributeNames: { [attributeName]: fieldName },
-          attributeValues: { [attributeValue]: QueryExpressions.formatValue(value) }
+          expression: `contains(${haskKey}, ${colonValue})`,
+          attributeNames: { [haskKey]: key },
+          attributeValues: { [colonValue]: QueryExpressions.formatValue(value) }
         };
 
       case 'not contains':
       case 'notcontains':
         return {
-          expression: `NOT contains(${attributeName}, ${attributeValue})`,
-          attributeNames: { [attributeName]: fieldName },
-          attributeValues: { [attributeValue]: QueryExpressions.formatValue(value) }
+          expression: `NOT contains(${haskKey}, ${colonValue})`,
+          attributeNames: { [haskKey]: key },
+          attributeValues: { [colonValue]: QueryExpressions.formatValue(value) }
         };
 
       case 'in':
@@ -177,7 +178,7 @@ export class QueryExpressions {
         }
         // biome-ignore lint/correctness/noSwitchDeclarations: <explanation>
         const valueKeys = value.map((_: any, index: number) =>
-          QueryExpressions.generateUniqueValueKey(`${fieldName}_${index}`, existingValueKeys)
+          QueryExpressions.generateUniqueValueKey(`${key}_${index}`, existingValueKeys)
         );
         // biome-ignore lint/correctness/noSwitchDeclarations: <explanation>
         const attributeValues: Record<string, NativeAttributeValue> = {};
@@ -185,24 +186,24 @@ export class QueryExpressions {
           attributeValues[key] = QueryExpressions.formatValue(value[index]);
         });
         return {
-          expression: `${attributeName} IN (${valueKeys.join(', ')})`,
-          attributeNames: { [attributeName]: fieldName },
+          expression: `${haskKey} IN (${valueKeys.join(', ')})`,
+          attributeNames: { [haskKey]: key },
           attributeValues
         };
 
       case 'attribute_exists':
       case 'exists':
         return {
-          expression: `attribute_exists(${attributeName})`,
-          attributeNames: { [attributeName]: fieldName },
+          expression: `attribute_exists(${haskKey})`,
+          attributeNames: { [haskKey]: key },
           attributeValues: {}
         };
 
       case 'attribute_not_exists':
       case 'notexists':
         return {
-          expression: `attribute_not_exists(${attributeName})`,
-          attributeNames: { [attributeName]: fieldName },
+          expression: `attribute_not_exists(${haskKey})`,
+          attributeNames: { [haskKey]: key },
           attributeValues: {}
         };
 
@@ -227,6 +228,14 @@ export class QueryExpressions {
     return merged;
   }
 
+  /**
+   * Generates a unique value key for a given base name and existing keys.
+   * @example
+   * const existingKeys = [':key1', ':key2', ':key3'];
+   * const baseName = 'value';
+   * const uniqueKey = QueryExpressions.generateUniqueValueKey(baseName, existingKeys);
+   * // Returns ':value_0'
+   */
   private static generateUniqueValueKey(baseName: string, existingKeys: string[]): string {
     let counter = 0;
     let candidateKey = `:${baseName}`;
