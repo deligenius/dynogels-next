@@ -5,17 +5,17 @@ export type { GSIStatusReport } from "./TableManager.js";
 export { QueryBuilder } from "./query/QueryBuilder.js";
 
 // Model and GSI types
-export type { 
-	ModelConfig, 
-	ModelOptions, 
-	PrimaryKey, 
+export type {
+	ModelConfig,
+	ModelOptions,
+	PrimaryKey,
 	UpdateInput,
 	GSIConfig,
 	LSIConfig,
 	IndexInfo,
 	GSIIndexNames,
 	LSIIndexNames,
-	IndexNames
+	IndexNames,
 } from "./types/Model.js";
 
 // Query types
@@ -29,10 +29,10 @@ export type {
 } from "./types/Query.js";
 
 // Error classes
-export { 
-	ItemNotFoundError, 
+export {
+	ItemNotFoundError,
 	ValidationError,
 	GSIValidationError,
 	IndexNotFoundError,
-	ProjectionError
+	ProjectionError,
 } from "./errors/DynamoDBError.js";

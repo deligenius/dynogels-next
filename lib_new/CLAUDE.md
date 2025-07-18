@@ -51,7 +51,7 @@ All commands should be run from the `lib_new/` directory:
 - **Key Methods**:
   - `where(fieldName)` - Add key conditions (returns type-aware condition builder)
   - `filter(fieldName)` - Add filter conditions for non-key fields (returns type-aware condition builder)
-  - `usingIndex(indexName)` - Query using a secondary index
+  - `usingIndex(indexName)` - Query using a secondary index with **compile-time validation**
   - `limit(count)` - Limit number of items returned
   - `ascending()` / `descending()` - Control sort order (ScanIndexForward)
   - `consistentRead(enabled?)` - Enable/disable consistent reads
@@ -64,6 +64,7 @@ All commands should be run from the `lib_new/` directory:
   - `stream()` - Stream results for large datasets (AsyncIterableIterator)
 - **Features**: 
   - Type-safe field validation with Zod schema inference
+  - **Index name validation**: Compile-time checking of GSI/LSI index names
   - Automatic expression building with native AWS SDK types
   - Separate condition classes for strings vs other types
   - Native value support (no manual AttributeValue conversion)
@@ -126,6 +127,8 @@ const User = factory.defineModel({
 - `rangeKey?` - Optional sort key field name  
 - `schema` - Zod schema for validation and typing
 - `tableName` - DynamoDB table name
+- `globalSecondaryIndexes?` - Optional GSI configuration with type-safe index names
+- `localSecondaryIndexes?` - Optional LSI configuration with type-safe index names
 - `timestamps?` - Optional timestamp configuration
   - `createdAt: boolean` - Auto-add creation timestamp
   - `updatedAt: boolean` - Auto-update modification timestamp
@@ -343,18 +346,39 @@ const allResults = await User.query({ id: 'user-1' })
 console.log(`Found ${allResults.length} active users`);
 ```
 
-#### Index Queries
+#### Index Queries with Type Safety
 ```typescript
-// Query using a secondary index
+// Model with GSI configuration
+const User = factory.defineModel({
+  hashKey: 'id',
+  schema: userSchema,
+  tableName: 'users',
+  globalSecondaryIndexes: {
+    'EmailIndex': {
+      hashKey: 'email',
+      projectionType: 'ALL'
+    },
+    'StatusIndex': {
+      hashKey: 'status',
+      projectionType: 'ALL'
+    }
+  }
+});
+
+// Query using a secondary index - index names are validated at compile time
 const usersByEmail = await User.query({ email: 'john@example.com' })
-  .usingIndex('EmailIndex')
+  .usingIndex('EmailIndex')         // ✅ Valid index name
   .exec();
 
 // Query index with additional filters
 const recentActiveUsers = await User.query({ status: 'active' })
-  .usingIndex('StatusIndex')
+  .usingIndex('StatusIndex')        // ✅ Valid index name
   .filter('createdAt').gte('2023-01-01')
   .exec();
+
+// Invalid index names cause TypeScript compile errors
+const invalidQuery = await User.query({ status: 'active' })
+  .usingIndex('NonExistentIndex'); // ❌ TypeScript error: not assignable to IndexNames<TConfig>
 ```
 
 ## Development Workflow
@@ -373,8 +397,9 @@ const recentActiveUsers = await User.query({ status: 'active' })
 - **Expression building** - Automatic KeyConditionExpression and FilterExpression generation
 - **AWS SDK v3 integration** - Native value support with QueryCommandInput
 - **Pagination support** - execWithPagination(), startKey(), stream()
-- **Index queries** - usingIndex() with full condition support
+- **Index queries** - usingIndex() with **compile-time index name validation**
 - **Schema validation** - Zod-based field validation and result parsing
+- **GSI/LSI support** - Full Global and Local Secondary Index support with type safety
 
 ### Architecture Highlights
 - **Type Safety**: Full TypeScript support with Zod schema inference
@@ -382,6 +407,7 @@ const recentActiveUsers = await User.query({ status: 'active' })
 - **Modular Design**: Separate classes for QueryBuilder, QueryConditions, and QueryExpressions
 - **Field Type Awareness**: String fields automatically get `beginsWith()`, `contains()` methods
 - **Expression Safety**: Automatic attribute name escaping and unique value key generation
+- **Index Validation**: Compile-time checking of GSI/LSI index names with `IndexNames<TConfig>` type
 
 ## Important Notes
 

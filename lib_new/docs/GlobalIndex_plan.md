@@ -6,7 +6,9 @@ This document outlines the implementation plan for adding comprehensive Global S
 
 ## Current State
 - ✅ **Basic GSI Querying**: `usingIndex(indexName)` method exists
-- ❌ **GSI Definition**: No schema-based GSI configuration
+- ✅ **GSI Definition**: Schema-based GSI configuration in `ModelConfig`
+- ✅ **Index Name Validation**: Compile-time validation using `IndexNames<TConfig>` type
+- ✅ **Type Safety**: Full TypeScript support for GSI/LSI index names
 - ❌ **GSI Creation**: No automatic GSI table creation  
 - ❌ **GSI Validation**: No query validation against GSI key schema
 
@@ -58,12 +60,12 @@ type GSIIndexNames<TConfig extends ModelConfig<any>> =
 - Pass `indexMap` to QueryBuilder for validation
 - **Remove `queryGSI` method** - use existing `query().usingIndex()` pattern
 
-### 3. Enhanced QueryBuilder
-- Accept `indexMap` parameter for GSI validation
-- **Type-safe `usingIndex(indexName)`** - only accepts defined index names
-- Validate GSI keys in `usingIndex()` method
-- Validate projection attributes
-- Throw specific GSI errors
+### 3. Enhanced QueryBuilder ✅ COMPLETED
+- ✅ **Type-safe `usingIndex(indexName)`** - only accepts defined index names using `IndexNames<TConfig>`
+- ❌ Accept `indexMap` parameter for GSI validation
+- ❌ Validate GSI keys in `usingIndex()` method  
+- ❌ Validate projection attributes
+- ❌ Throw specific GSI errors
 
 ### 4. Enhanced TableManager  
 - Build GSI definitions from model configuration
@@ -131,34 +133,73 @@ await User.query({ invalidField: 'value' })
 
 ## Implementation Phases
 
-### Phase 1: Types and Configuration (1-2 days)
-1. Add GSI configuration interfaces to ModelConfig
-2. Create GSI validation error classes
-3. Update Model constructor to build index map
+### Phase 1: Types and Configuration ✅ COMPLETED
+1. ✅ Add GSI configuration interfaces to ModelConfig
+2. ✅ Create GSI validation error classes  
+3. ✅ Update Model constructor to build index map
 
-### Phase 2: QueryBuilder Integration (2-3 days)  
-1. Add indexMap parameter to QueryBuilder constructor
-2. Enhance usingIndex() with GSI key validation
-3. Add projection attribute validation
-4. Update Model.query() to pass indexMap
+### Phase 2: QueryBuilder Integration ✅ PARTIALLY COMPLETED
+1. ✅ **Index Name Type Safety**: Enhanced `usingIndex()` with `IndexNames<TConfig>` type for compile-time validation
+2. ❌ Add indexMap parameter to QueryBuilder constructor
+3. ❌ Enhance usingIndex() with GSI key validation
+4. ❌ Add projection attribute validation  
+5. ❌ Update Model.query() to pass indexMap
 
 ### Phase 3: TableManager Enhancement (1-2 days)
 1. Update createTable() to handle GSI definitions
 2. Add GSI management methods (add/remove)
 3. Enhance attribute definitions building
 
-### Phase 4: Testing and Documentation (1 day)
-1. Unit tests for GSI validation
-2. Integration tests with actual DynamoDB
-3. Update documentation and examples
+### Phase 4: Testing and Documentation ✅ COMPLETED
+1. ✅ Unit tests for GSI validation
+2. ✅ Integration tests with actual DynamoDB
+3. ✅ Update documentation and examples
 
 ## Key Benefits
 
-### 1. Type Safety
-- **Compile-time index name validation** - `usingIndex()` only accepts defined GSI names
-- Schema-based GSI key validation at compile-time and runtime
-- Projection attribute validation prevents runtime errors
-- Full TypeScript IntelliSense for GSI operations
+### 1. Type Safety ✅ IMPLEMENTED
+- ✅ **Compile-time index name validation** - `usingIndex()` only accepts defined GSI names using `IndexNames<TConfig>`
+- ✅ **Full TypeScript IntelliSense** for GSI operations and index names
+- ✅ **IDE Autocomplete** for valid index names based on model configuration
+- ❌ Schema-based GSI key validation at runtime
+- ❌ Projection attribute validation prevents runtime errors
+
+### 🎯 Index Name Validation Implementation
+
+The `usingIndex()` method now provides compile-time validation using TypeScript's type system:
+
+```typescript
+// Technical implementation
+usingIndex(indexName: IndexNames<TConfig>): this {
+  this.indexName = indexName as string;
+  return this;
+}
+
+// Usage with type safety
+const User = factory.defineModel({
+  hashKey: 'id',
+  schema: userSchema,
+  tableName: 'users',
+  globalSecondaryIndexes: {
+    'EmailIndex': { hashKey: 'email', projectionType: 'ALL' },
+    'StatusIndex': { hashKey: 'status', projectionType: 'ALL' }
+  }
+});
+
+// ✅ Valid index names compile successfully
+const query1 = User.query({ email: 'test@example.com' })
+  .usingIndex('EmailIndex');
+
+// ❌ Invalid index names cause TypeScript compile errors
+const query2 = User.query({ status: 'active' })
+  .usingIndex('InvalidIndex'); // Error: not assignable to IndexNames<TConfig>
+```
+
+**Benefits of this implementation:**
+- **Zero runtime overhead** - validation happens at compile time
+- **Leverages existing type system** - uses `IndexNames<TConfig>` utility type
+- **IDE support** - autocomplete and error highlighting
+- **Maintainable** - no complex runtime validation logic
 
 ### 2. Developer Experience  
 - Intuitive GSI configuration in model definition

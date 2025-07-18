@@ -33,7 +33,10 @@ export class GSIValidationError extends DynamoDBError {
 	readonly code = "GSIValidationException";
 	readonly statusCode = 400;
 
-	constructor(message: string, public indexName: string) {
+	constructor(
+		message: string,
+		public indexName: string,
+	) {
 		super(message);
 		this.name = "GSIValidationError";
 	}
@@ -54,9 +57,9 @@ export class ProjectionError extends DynamoDBError {
 	readonly statusCode = 400;
 
 	constructor(
-		message: string, 
-		public indexName: string, 
-		public requestedAttributes: string[]
+		message: string,
+		public indexName: string,
+		public requestedAttributes: string[],
 	) {
 		super(message);
 		this.name = "ProjectionError";

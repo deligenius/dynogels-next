@@ -40,6 +40,7 @@ lib_new/src/
 2. **QueryConditions.ts**: Separate classes for different field types and contexts
 3. **QueryExpressions.ts**: Robust expression building with unique key generation
 4. **Types**: Full TypeScript integration with AWS SDK types
+5. **Index Type Inference**: Compile-time validation of index names using `IndexNames<TConfig>` type
 
 ## Type System Design ✅ IMPLEMENTED
 
@@ -210,7 +211,7 @@ const complexQuery = await ProductModel.query({ productId: 'prod-1' })
 - ✅ **Type safety**: `StringFilterConditions` for strings, `FilterConditions` for others
 
 #### 4. Query Configuration ✅
-- ✅ `usingIndex(indexName)` - Use Global/Local Secondary Index
+- ✅ `usingIndex(indexName)` - Use Global/Local Secondary Index with **full type inference**
 - ✅ `consistentRead(enabled = true)` - Enable/disable consistent reads
 - ✅ `limit(count)` - Limit result count (with validation)
 - ✅ `ascending()` / `descending()` - Sort order (sets `ScanIndexForward`)
@@ -252,12 +253,13 @@ const complexQuery = await ProductModel.query({ productId: 'prod-1' })
    - **Pagination**: `execWithPagination()`, `startKey()`, pagination keys with native values
    - **Streaming**: `stream()` returns `AsyncIterableIterator<T[]>` for large datasets
    - **Load All**: `loadAll()` automatic pagination handling
-   - **Index Support**: `usingIndex()` for GSI/LSI queries
+   - **Index Support**: `usingIndex()` for GSI/LSI queries with **full type inference**
    - **Query Options**: `limit()`, `consistentRead()`, `projectionExpression()`, `returnConsumedCapacity()`
 
 5. **🛡️ Type Safety & Validation**
    - Schema-based field validation (only schema fields allowed)
    - Type-aware operator availability (strings get `beginsWith()`, numbers don't)
+   - **Index name validation**: Compile-time checking of index names using `IndexNames<TConfig>`
    - Result validation with Zod schema parsing
    - Comprehensive error handling with context
 
@@ -266,6 +268,49 @@ const complexQuery = await ProductModel.query({ productId: 'prod-1' })
    - Native value support with `NativeAttributeValue`
    - No manual AttributeValue conversion needed
    - Future-proof with AWS SDK evolution
+
+### 🎯 Index Type Inference Enhancement
+
+The `usingIndex()` method now provides **compile-time validation** of index names:
+
+```typescript
+// ✅ Model with GSI/LSI configuration
+const User = factory.defineModel({
+  hashKey: 'id',
+  schema: userSchema,
+  tableName: 'users',
+  globalSecondaryIndexes: {
+    'EmailIndex': { hashKey: 'email', projectionType: 'ALL' },
+    'StatusIndex': { hashKey: 'status', projectionType: 'ALL' }
+  }
+});
+
+// ✅ Valid index names are accepted
+const query1 = User.query({ email: 'test@example.com' })
+  .usingIndex('EmailIndex');        // ✅ Compile-time validation passes
+
+const query2 = User.query({ status: 'active' })
+  .usingIndex('StatusIndex');       // ✅ Compile-time validation passes
+
+// ❌ Invalid index names cause TypeScript errors
+const query3 = User.query({ status: 'active' })
+  .usingIndex('NonExistentIndex'); // ❌ TS Error: not assignable to IndexNames<TConfig>
+```
+
+**Technical Implementation**: 
+```typescript
+// Uses the existing IndexNames<TConfig> utility type for clean type inference
+usingIndex(indexName: IndexNames<TConfig>): this {
+  this.indexName = indexName as string;
+  return this;
+}
+```
+
+This enhancement provides:
+- **🔍 IntelliSense**: IDE autocomplete for valid index names
+- **🚨 Early Error Detection**: Compile-time validation prevents runtime errors
+- **📝 Clean Implementation**: Leverages existing type utilities for maintainability
+- **🎯 Type Safety**: Ensures only valid indexes from the model configuration can be used
 
 ## Implementation Details - COMPLETED ARCHITECTURE
 

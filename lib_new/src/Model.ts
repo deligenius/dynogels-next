@@ -2,7 +2,12 @@ import type { DynamoDBDocument } from "@aws-sdk/lib-dynamodb";
 import { z } from "zod";
 import { ItemNotFoundError, ValidationError } from "./errors/DynamoDBError.js";
 import { QueryBuilder } from "./query/QueryBuilder.js";
-import type { IndexInfo, ModelConfig, ModelOptions, UpdateInput } from "./types/Model.js";
+import type {
+	IndexInfo,
+	ModelConfig,
+	ModelOptions,
+	UpdateInput,
+} from "./types/Model.js";
 
 type PrimaryKey<
 	TSchema extends z.ZodObject<any>,
@@ -10,26 +15,24 @@ type PrimaryKey<
 	TRangeKey extends keyof z.infer<TSchema> | undefined = undefined,
 > = TRangeKey extends keyof z.infer<TSchema>
 	? {
-		[K in THashKey]: z.infer<TSchema>[K];
-	} & {
-		[K in TRangeKey]: z.infer<TSchema>[K];
-	}
+			[K in THashKey]: z.infer<TSchema>[K];
+		} & {
+			[K in TRangeKey]: z.infer<TSchema>[K];
+		}
 	: {
-		[K in THashKey]: z.infer<TSchema>[K];
-	};
+			[K in THashKey]: z.infer<TSchema>[K];
+		};
 
 export class Model<
 	TSchema extends z.ZodObject<any>,
 	THashKey extends keyof z.infer<TSchema>,
 	TRangeKey extends keyof z.infer<TSchema> | undefined = undefined,
-	TConfig extends ModelConfig<TSchema> = ModelConfig<TSchema>
+	TConfig extends ModelConfig<TSchema> = ModelConfig<TSchema>,
 > {
-
 	constructor(
 		private readonly client: DynamoDBDocument,
-		public readonly config: TConfig
-	) {
-	}
+		public readonly config: TConfig,
+	) {}
 
 	async get(
 		key: PrimaryKey<TSchema, THashKey, TRangeKey>,
@@ -173,7 +176,11 @@ export class Model<
 	query(
 		keyValues: Partial<z.infer<TSchema>>,
 	): QueryBuilder<TSchema, THashKey, TRangeKey, TConfig> {
-		return new QueryBuilder(this.client, this.config, keyValues);
+		return new QueryBuilder<TSchema, THashKey, TRangeKey, TConfig>(
+			this.client,
+			this.config,
+			keyValues,
+		);
 	}
 
 	private getTimestamps(createdAt?: string, updatedAt?: string) {
@@ -189,6 +196,4 @@ export class Model<
 
 		return timestamps;
 	}
-
-
 }

@@ -5,7 +5,7 @@
 
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { z } from "zod";
-import { ModelFactory, TableManager } from "./index.js";
+import { ModelFactory, TableManager } from "../index.js";
 
 // Define user schema with timestamps
 const userSchema = z.object({

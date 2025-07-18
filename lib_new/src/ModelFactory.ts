@@ -15,13 +15,13 @@ export class ModelFactory {
 		TSchema extends z.ZodObject<any>,
 		THashKey extends keyof z.infer<TSchema>,
 		TRangeKey extends keyof z.infer<TSchema> | undefined = undefined,
-		TConfig extends ModelConfig<TSchema> = ModelConfig<TSchema>
+		TConfig extends ModelConfig<TSchema> = ModelConfig<TSchema>,
 	>(
 		config: TConfig & {
 			hashKey: THashKey;
 			rangeKey?: TRangeKey;
 		},
-	): Model<TSchema, THashKey, TRangeKey> {
+	): Model<TSchema, THashKey, TRangeKey, TConfig> {
 		return new Model(this.documentClient, config);
 	}
 }
