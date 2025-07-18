@@ -1,12 +1,3 @@
-*.node
-node_modules/
-build/
-Debug/
-Release/
-npm-debug.log
-tmp
-covreporter/
-coverage/
-.tern-port
-.idea
-yarn-error.log
+**/node_modules
+**/dist
+.env
