@@ -43,7 +43,22 @@ All commands should be run from the `lib_new/` directory:
   - `getMany(primaryKeys)` - Batch retrieve multiple items
   - `update(primaryKey, updateData)` - Update existing item
   - `destroy(primaryKey)` - Delete item
+  - `query(keyValues)` - Query items using key conditions
 - **Features**: Automatic timestamp handling, schema validation, composite key support
+
+#### QueryBuilder (`src/query/QueryBuilder.ts`)
+- **Purpose**: Fluent API for building DynamoDB queries with conditions and options
+- **Key Methods**:
+  - `where(fieldName)` - Add key condition for range key or additional key fields
+  - `filter(fieldName)` - Add filter condition for non-key fields
+  - `usingIndex(indexName)` - Query using a secondary index
+  - `limit(count)` - Limit number of items returned
+  - `ascending()` / `descending()` - Control sort order
+  - `consistentRead()` - Enable consistent reads
+  - `exec()` - Execute query and return results
+  - `execWithPagination()` - Execute with pagination support
+  - `stream()` - Stream results for large datasets
+- **Features**: Automatic key condition generation, filter expressions, index support
 
 #### TableManager (`src/TableManager.ts`)
 - **Purpose**: Handles DynamoDB table lifecycle operations
@@ -85,6 +100,13 @@ const User = factory.defineModel({
 - Strict TypeScript configuration
 - AWS SDK v3 integration
 - Type-safe CRUD operations
+
+#### Flexible Query Design
+- `query(keyValues)` accepts any key-value pairs and generates `eq` conditions automatically
+- No distinction between hash/range keys - all provided keys become equality conditions
+- Use `where()` for additional key conditions (range key operations like `beginsWith`, `between`)
+- Use `filter()` for non-key attribute filtering
+- Supports partial key queries for composite key models
 
 ### Configuration Options
 
@@ -194,6 +216,90 @@ const product = await Product.get({
 });
 ```
 
+### Query Operations
+
+#### Basic Hash Key Query
+```typescript
+// Query by hash key only (returns all items with that hash key)
+const userItems = await User.query({ id: 'user-1' }).exec();
+```
+
+#### Composite Key Query
+```typescript
+// Query with both hash and range key (exact match)
+const product = await Product.query({ 
+  productId: 'prod-1', 
+  category: 'electronics' 
+}).exec();
+
+// Query with hash key only (returns all items with that productId)
+const allProductVersions = await Product.query({ 
+  productId: 'prod-1' 
+}).exec();
+```
+
+#### Query with Additional Conditions
+```typescript
+// Query with hash key and filter conditions
+const activeUsers = await User.query({ id: 'user-1' })
+  .filter('status').eq('active')
+  .filter('age').gte(18)
+  .exec();
+
+// Query with range key conditions (for composite keys)
+const electronicProducts = await Product.query({ productId: 'prod-1' })
+  .where('category').beginsWith('elect')
+  .exec();
+```
+
+#### Query Options
+```typescript
+// Query with various options
+const results = await User.query({ id: 'user-1' })
+  .filter('status').eq('active')
+  .limit(10)
+  .ascending()
+  .consistentRead(true)
+  .exec();
+
+// Paginated query
+const page = await User.query({ id: 'user-1' })
+  .limit(10)
+  .execWithPagination();
+
+console.log('Items:', page.items);
+console.log('Last key:', page.lastEvaluatedKey);
+console.log('Count:', page.count);
+```
+
+#### Streaming Large Result Sets
+```typescript
+// Stream results for large datasets
+for await (const batch of User.query({ status: 'active' }).stream()) {
+  console.log(`Processing batch of ${batch.length} items`);
+  // Process each batch
+}
+
+// Load all results at once (use with caution for large datasets)
+const allResults = await User.query({ status: 'active' })
+  .loadAll()
+  .exec();
+```
+
+#### Index Queries
+```typescript
+// Query using a secondary index
+const usersByEmail = await User.query({ email: 'john@example.com' })
+  .usingIndex('EmailIndex')
+  .exec();
+
+// Query index with additional filters
+const recentActiveUsers = await User.query({ status: 'active' })
+  .usingIndex('StatusIndex')
+  .filter('createdAt').gte('2023-01-01')
+  .exec();
+```
+
 ## Development Workflow
 
 1. **Model Development**: Define schemas using Zod, create models with ModelFactory
@@ -212,9 +318,10 @@ const product = await Product.get({
 - **Strict TypeScript** configuration ensures type safety
 - Integration tests require **DynamoDB Local** or actual AWS DynamoDB access
 
-## Demo Application
+## Demo Applications
 
-The `src/app.ts` file contains a comprehensive demo showing:
+### Main Demo (`src/app.ts`)
+The main demo contains a comprehensive example showing:
 - Model factory initialization
 - Table creation and management
 - All CRUD operations
@@ -224,3 +331,12 @@ The `src/app.ts` file contains a comprehensive demo showing:
 - Graceful shutdown handling
 
 Run with: `npm start` or `tsx src/app.ts`
+
+### Query Demo (`src/query_demo.ts`)
+A focused demo showing query functionality:
+- Basic querying with key conditions
+- Filter operations on non-key attributes
+- Query options (limit, sort, pagination)
+- Error handling for query operations
+
+Run with: `tsx src/query_demo.ts`
