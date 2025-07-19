@@ -309,7 +309,7 @@ export class ScanBuilder<
       TableName: this.config.tableName
     };
 
-    // Apply options
+    // Apply all options with complete coverage
     if (this.options.ConsistentRead !== undefined) {
       request.ConsistentRead = this.options.ConsistentRead;
     }
@@ -322,7 +322,15 @@ export class ScanBuilder<
     if (this.options.TotalSegments !== undefined) {
       request.TotalSegments = this.options.TotalSegments;
     }
-    // ... other options
+    if (this.options.ProjectionExpression !== undefined) {
+      request.ProjectionExpression = this.options.ProjectionExpression;
+    }
+    if (this.options.ReturnConsumedCapacity !== undefined) {
+      request.ReturnConsumedCapacity = this.options.ReturnConsumedCapacity;
+    }
+    if (this.options.ExclusiveStartKey !== undefined) {
+      request.ExclusiveStartKey = this.options.ExclusiveStartKey;
+    }
 
     if (this.indexName) {
       request.IndexName = this.indexName;
@@ -345,6 +353,51 @@ export class ScanBuilder<
     }
 
     return request;
+  }
+
+  // Enhanced exec() method that respects loadAll flag
+  async exec(): Promise<z.infer<TSchema>[]> {
+    if (this.isLoadAll) {
+      // Automatically paginate through all results
+      const allItems: z.infer<TSchema>[] = [];
+      let lastEvaluatedKey = this.options.ExclusiveStartKey;
+
+      do {
+        const result = await this.execWithPagination(lastEvaluatedKey);
+        allItems.push(...result.items);
+        lastEvaluatedKey = result.lastEvaluatedKey;
+      } while (lastEvaluatedKey);
+
+      return allItems;
+    } else {
+      // Single page execution
+      const result = await this.execWithPagination();
+      return result.items;
+    }
+  }
+
+  // loadAll configuration
+  loadAll(): this {
+    this.isLoadAll = true;
+    return this;
+  }
+
+  // startKey for pagination
+  startKey(key: Record<string, NativeAttributeValue>): this {
+    this.options.ExclusiveStartKey = key;
+    return this;
+  }
+
+  // projectionExpression support
+  projectionExpression(expression: string): this {
+    this.options.ProjectionExpression = expression;
+    return this;
+  }
+
+  // returnConsumedCapacity support
+  returnConsumedCapacity(level: 'INDEXES' | 'TOTAL' | 'NONE'): this {
+    this.options.ReturnConsumedCapacity = level;
+    return this;
   }
 
   // Execution with proper error handling
@@ -370,7 +423,10 @@ export class ScanBuilder<
         consumedCapacity: response.ConsumedCapacity
       };
     } catch (error) {
-      throw new Error(`Scan failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      if (error instanceof Error) {
+        throw new ScanExecutionError(error.message, error);
+      }
+      throw new ScanExecutionError('Unknown scan error');
     }
   }
 
@@ -586,12 +642,29 @@ const allActiveUsers = await parallelScan(
 export class ScanValidationError extends Error {
   constructor(message: string, public field: string) {
     super(`Scan validation error on field '${field}': ${message}`);
+    this.name = 'ScanValidationError';
   }
 }
 
 export class ParallelScanError extends Error {
   constructor(message: string, public segment: number) {
     super(`Parallel scan error on segment ${segment}: ${message}`);
+    this.name = 'ParallelScanError';
+  }
+}
+
+export class ScanExecutionError extends Error {
+  constructor(message: string, public cause?: Error) {
+    super(`Scan execution failed: ${message}`);
+    this.name = 'ScanExecutionError';
+    this.cause = cause;
+  }
+}
+
+export class ScanIndexError extends Error {
+  constructor(indexName: string, tableName: string) {
+    super(`Index '${indexName}' not found on table '${tableName}'`);
+    this.name = 'ScanIndexError';
   }
 }
 ```
@@ -662,30 +735,44 @@ describe('ScanBuilder Integration', () => {
 
 ## Implementation Phases
 
-### Phase 1: Core ScanBuilder Implementation
-- [x] Plan design and architecture
-- [ ] Create `ScanBuilder` class with basic functionality
+### Phase 1: Core ScanBuilder Implementation ✅ ENHANCED
+- [x] Plan design and architecture - **COMPLETED WITH QUERY BUILDER PARITY**
+- [ ] Create `ScanBuilder` class with full functionality
 - [ ] Implement `filter()` method with condition building
-- [ ] Add `exec()` and `execWithPagination()` methods
+- [ ] Add complete `exec()` method with `loadAll` integration
+- [ ] Add `execWithPagination()` method
+- [ ] Add all configuration methods: `startKey()`, `projectionExpression()`, `returnConsumedCapacity()`
 - [ ] Integrate with `Model` class
 
-### Phase 2: Advanced Features
+### Phase 2: Advanced Features ✅ ENHANCED
 - [ ] Add `segments()` method for parallel scanning
-- [ ] Implement `stream()` method for large datasets
-- [ ] Add `usingIndex()` support with type safety
-- [ ] Add all configuration methods (limit, consistentRead, etc.)
+- [ ] Implement `stream()` method for large datasets with memory efficiency
+- [ ] Add `usingIndex()` support with **compile-time type safety** using `IndexNames<TConfig>`
+- [ ] Add `loadAll()` method that integrates with `exec()`
+- [ ] Complete all configuration methods with proper validation
 
-### Phase 3: Testing and Optimization
-- [ ] Write comprehensive unit tests
-- [ ] Add integration tests with DynamoDB
+### Phase 3: Error Handling & Validation ✅ NEW
+- [ ] Implement comprehensive custom error types
+- [ ] Add detailed error context and field information
+- [ ] Enhanced schema validation with Zod
+- [ ] AWS error handling and transformation
+- [ ] Validation for all method parameters
+
+### Phase 4: Testing and Optimization ✅ ENHANCED
+- [ ] Write comprehensive unit tests covering all methods
+- [ ] Add integration tests with DynamoDB Local
 - [ ] Performance testing and optimization
-- [ ] Add parallel scan helper functions
+- [ ] Add parallel scan helper functions with error handling
+- [ ] Test `loadAll` behavior with large datasets
+- [ ] Memory usage testing for streaming operations
 
-### Phase 4: Documentation and Examples
-- [ ] Update CLAUDE.md with ScanBuilder documentation
-- [ ] Create scan demo application
-- [ ] Add performance comparison examples
-- [ ] Document best practices
+### Phase 5: Documentation and Examples ✅ ENHANCED
+- [ ] Update CLAUDE.md with complete ScanBuilder documentation
+- [ ] Create scan demo application showing all features
+- [ ] Add performance comparison examples (scan vs query)
+- [ ] Document best practices for parallel scanning
+- [ ] Add examples for all execution methods (`exec()`, `execWithPagination()`, `stream()`)
+- [ ] Document memory management strategies
 
 ## Key Design Decisions
 
@@ -767,14 +854,29 @@ describe('ScanBuilder Integration', () => {
 **🎯 READY FOR IMPLEMENTATION**  
 **📅 CREATED: Based on proven QueryBuilder architecture**
 
-## Summary
+## Enhanced Summary ✅
 
-This ScanBuilder implementation plan provides:
+This **enhanced** ScanBuilder implementation plan provides:
 
-1. **🏗️ Proven Architecture**: Based on successful QueryBuilder pattern
-2. **🔒 Type Safety**: Full TypeScript and Zod integration
-3. **⚡ Performance**: Parallel scanning and streaming support
-4. **🔄 Code Reuse**: Leverages existing QueryBuilder components
-5. **📖 Developer Experience**: Intuitive API with comprehensive documentation
+1. **🏗️ Proven Architecture**: Based on successful QueryBuilder pattern with **full feature parity**
+2. **🔒 Type Safety**: Full TypeScript and Zod integration with **compile-time index validation**
+3. **⚡ Performance**: Parallel scanning, streaming support, and **intelligent `loadAll` integration**
+4. **🔄 Code Reuse**: Leverages existing QueryBuilder components for **consistency**
+5. **📖 Developer Experience**: Intuitive API with **comprehensive method coverage**
+6. **🚨 Error Handling**: **Complete custom error types** with detailed context
+7. **🎯 Execution Methods**: **Three execution patterns** - `exec()`, `execWithPagination()`, `stream()`
+8. **⚙️ Configuration**: **All AWS SDK options** supported with proper validation
+9. **🧪 Testing**: **Comprehensive test coverage** including performance and memory testing
+10. **📚 Documentation**: **Complete examples** for all features and use cases
 
-The plan focuses on reusing the proven QueryBuilder architecture while adding scan-specific features like parallel scanning. This approach ensures consistency, reduces implementation time, and provides a robust foundation for DynamoDB table scanning operations.
+### Key Enhancements Over Original Plan:
+
+✅ **Complete `exec()` Method**: Intelligent behavior based on `loadAll` flag  
+✅ **All Configuration Options**: `startKey()`, `projectionExpression()`, `returnConsumedCapacity()`  
+✅ **Enhanced Error Handling**: Custom error types with detailed context  
+✅ **Full Type Safety**: Compile-time index name validation  
+✅ **Memory Management**: Proper streaming and pagination strategies  
+✅ **Complete Test Coverage**: Unit, integration, and performance tests  
+✅ **Production Ready**: All QueryBuilder features adapted for scanning  
+
+The enhanced plan ensures **complete feature parity** with QueryBuilder while adding scan-specific capabilities like parallel scanning. This approach provides a **production-ready** scanning solution with excellent developer experience and robust error handling.
