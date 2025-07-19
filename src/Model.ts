@@ -26,9 +26,8 @@ type PrimaryKey<
 
 export class Model<
 	Schema extends z.ZodObject<any>,
-	SchemaType extends z.infer<Schema>,
-	HashKey extends keyof SchemaType,
-	RangeKey extends keyof SchemaType | undefined = undefined
+	HashKey extends keyof z.infer<Schema>,
+	RangeKey extends keyof z.infer<Schema> | undefined = undefined
 > {
 	constructor(
 		private readonly client: DynamoDBDocument,
@@ -39,9 +38,9 @@ export class Model<
 	) { }
 
 	async get(
-		key: PrimaryKey<SchemaType, HashKey, RangeKey>,
+		key: PrimaryKey<z.infer<Schema>, HashKey, RangeKey>,
 		options: ModelOptions = {},
-	): Promise<SchemaType | null> {
+	): Promise<z.infer<Schema> | null> {
 		const result = await this.client.get({
 			TableName: this.config.tableName,
 			Key: key,
@@ -56,8 +55,8 @@ export class Model<
 	}
 
 	async create(
-		item: Omit<SchemaType, "createdAt" | "updatedAt">,
-	): Promise<SchemaType> {
+		item: Omit<z.infer<Schema>, "createdAt" | "updatedAt">,
+	): Promise<z.infer<Schema>> {
 		const now = new Date().toISOString();
 		const timestamps = this.getTimestamps(now, now);
 
@@ -78,9 +77,9 @@ export class Model<
 	}
 
 	async update(
-		key: PrimaryKey<SchemaType, HashKey, RangeKey>,
-		updates: UpdateInput<SchemaType>,
-	): Promise<SchemaType> {
+		key: PrimaryKey<z.infer<Schema>, HashKey, RangeKey>,
+		updates: UpdateInput<z.infer<Schema>>,
+	): Promise<z.infer<Schema>> {
 		const existingItem = await this.get(key, { consistentRead: true });
 		if (!existingItem) {
 			throw new ItemNotFoundError(
@@ -108,20 +107,20 @@ export class Model<
 	}
 
 	async getMany(
-		keys: PrimaryKey<SchemaType, HashKey, RangeKey>[],
+		keys: PrimaryKey<z.infer<Schema>, HashKey, RangeKey>[],
 		options: ModelOptions = {},
-	): Promise<SchemaType[]> {
+	): Promise<z.infer<Schema>[]> {
 		if (keys.length === 0) {
 			return [];
 		}
 
 		// DynamoDB BatchGetItem has a limit of 100 items per request
-		const batches: PrimaryKey<SchemaType, HashKey, RangeKey>[][] = [];
+		const batches: PrimaryKey<z.infer<Schema>, HashKey, RangeKey>[][] = [];
 		for (let i = 0; i < keys.length; i += 100) {
 			batches.push(keys.slice(i, i + 100));
 		}
 
-		const results: SchemaType[] = [];
+		const results: z.infer<Schema>[] = [];
 
 		const batchResults = await Promise.all(
 			batches.map((batch) =>
@@ -164,9 +163,9 @@ export class Model<
 		return this.validateAndTransform(result.Attributes);
 	}
 
-	private validateAndTransform(item: any): SchemaType {
+	private validateAndTransform(item: any): z.infer<Schema> {
 		try {
-			return this.config.schema.parse(item) as SchemaType;
+			return this.config.schema.parse(item) as z.infer<Schema>;
 		} catch (error) {
 			if (error instanceof z.ZodError) {
 				throw new ValidationError(
@@ -178,8 +177,8 @@ export class Model<
 	}
 
 	query(
-		keyValues: Partial<SchemaType>,
-	): QueryBuilder<Schema, SchemaType, HashKey, RangeKey> {
+		keyValues: Partial<z.infer<Schema>>,
+	): QueryBuilder<Schema, z.infer<Schema>, HashKey, RangeKey> {
 		return new QueryBuilder(
 			this.client,
 			this.config,

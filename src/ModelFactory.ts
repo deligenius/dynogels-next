@@ -15,9 +15,8 @@ export class ModelFactory {
 		TSchema extends z.ZodObject<any>,
 		THashKey extends keyof z.infer<TSchema>,
 		TRangeKey extends keyof z.infer<TSchema> | undefined = undefined,
-		TConfig extends ModelConfig<TSchema> = ModelConfig<TSchema>,
 	>(
-		config: TConfig & {
+		config: ModelConfig<TSchema> & {
 			hashKey: THashKey;
 			rangeKey?: TRangeKey;
 		},

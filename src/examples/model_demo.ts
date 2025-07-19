@@ -94,6 +94,7 @@ async function main() {
 			name: "John Doe",
 			age: 30,
 			status: "active",
+			
 		});
 		console.log("Created user1:", user1);
 
