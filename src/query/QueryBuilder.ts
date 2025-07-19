@@ -307,8 +307,9 @@ export class QueryBuilder<
 			if (!field || typeof field._def !== 'object') {
 				return false;
 			}
+			const isZodEnumString = field._def.typeName === 'ZodEnum' && field._def.type?._def.typeName === 'ZodString';
 
-			return field._def.typeName === 'ZodString';
+			return field._def.typeName === 'ZodString' || isZodEnumString
 		} catch {
 			return false;
 		}

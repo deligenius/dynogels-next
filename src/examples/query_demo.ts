@@ -261,8 +261,8 @@ async function main() {
 		// String beginsWith
 		console.log("\n📝 String beginsWith():");
 		const postQuery3 = await Post.query({ userId: "user1" })
-			.filter("title")
-			.beginsWith("Getting")
+			.filter("tags")
+			.contains("python")
 			.exec();
 		console.log(
 			`Posts with postId beginning with 'post':`,
