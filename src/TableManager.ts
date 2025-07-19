@@ -46,7 +46,7 @@ export class TableManager {
 		return TableManager.instance;
 	}
 
-	constructor(private readonly client: DynamoDBClient) {}
+	private constructor(private readonly client: DynamoDBClient) {}
 
 	async createTable<TSchema extends z.ZodObject<any>>(
 		model: Model<TSchema, any, any, any>,

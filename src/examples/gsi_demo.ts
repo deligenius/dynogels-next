@@ -32,7 +32,7 @@ const client = new DynamoDBClient({
 });
 
 const factory = new ModelFactory(client);
-const tableManager = new TableManager(client);
+const tableManager = await TableManager.initialize(client);
 
 // Test 1: Model Definition with GSI
 console.log("🧪 Test 1: Model Definition with GSI");

@@ -50,7 +50,7 @@ async function main() {
 	});
 
 	const factory = new ModelFactory(dynamoClient);
-	const tableManager = new TableManager(dynamoClient);
+	const tableManager = await TableManager.initialize(dynamoClient);
 
 	// 2. Define models
 	console.log("2. Defining models...");
