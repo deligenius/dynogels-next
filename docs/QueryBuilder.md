@@ -1,273 +1,346 @@
-# Query Builder Implementation - COMPLETED ✅
+# QueryBuilder Documentation
 
 ## Overview
 
-This document describes the completed implementation of the TypeScript query builder for the `lib_new/src/Model.ts` class. The QueryBuilder provides a fluent API with full type safety using Zod schemas and AWS SDK v3 native value support.
+The QueryBuilder provides a fluent API for building type-safe DynamoDB queries with full schema validation and AWS SDK v3 integration. It supports complex query conditions, pagination, streaming, and Global Secondary Index queries.
 
-**Status**: ✅ **IMPLEMENTATION COMPLETE**
-- All core functionality implemented
-- Type safety with schema validation
-- AWS SDK v3 native value integration
-- Comprehensive operator support
-- Pagination and streaming support
+## Key Features
 
-## Architecture
+- **Type Safety**: Full TypeScript support with Zod schema validation
+- **Fluent API**: Chainable methods for building complex queries
+- **Schema Validation**: Only schema fields allowed with type-aware operators
+- **AWS SDK v3**: Native value support with automatic expression building
+- **Index Support**: Type-safe GSI/LSI querying with compile-time validation
+- **Execution Options**: Multiple execution patterns for different use cases
 
-### Design Goals ✅ ACHIEVED
+## API Reference
 
-1. **Type Safety**: ✅ Full TypeScript and Zod integration with compile-time and runtime validation
-2. **Fluent API**: ✅ Complete method chaining with intuitive query building  
-3. **Schema Awareness**: ✅ Only schema fields allowed, type-aware operators (string fields get `beginsWith()`, etc.)
-4. **AWS SDK v3**: ✅ Native value support with `QueryCommandInput` and `NativeAttributeValue`
-5. **Performance**: ✅ Efficient expression building, pagination, and streaming support
+### Query Initialization
 
-### File Structure ✅ IMPLEMENTED
-
-```
-lib_new/src/
-├── query/
-│   ├── QueryBuilder.ts       # ✅ Main query builder class with fluent API
-│   ├── QueryConditions.ts    # ✅ Type-aware condition builders (QueryConditions, StringQueryConditions, FilterConditions)
-│   └── QueryExpressions.ts   # ✅ Expression building utilities with native value support
-├── types/
-│   └── Query.ts             # ✅ Complete query operation types with AWS SDK integration
-└── Model.ts                 # ✅ Integrated with query(keyValues) method
-```
-
-### Implementation Highlights
-
-1. **QueryBuilder.ts**: Complete fluent interface with all planned methods
-2. **QueryConditions.ts**: Separate classes for different field types and contexts
-3. **QueryExpressions.ts**: Robust expression building with unique key generation
-4. **Types**: Full TypeScript integration with AWS SDK types
-5. **Index Type Inference**: Compile-time validation of index names using `IndexNames<TConfig>` type
-
-## Type System Design ✅ IMPLEMENTED
-
-### Core Types - ACTUAL IMPLEMENTATION
+#### `query(keyValues): QueryBuilder`
+Initialize a query with key-value pairs that automatically generate equality conditions.
 
 ```typescript
-// Query operation types - leveraging AWS SDK types with native values
-import type { QueryCommandInput, NativeAttributeValue } from '@aws-sdk/lib-dynamodb';
+// Hash key only
+const users = await User.query({ id: 'user-123' }).exec();
 
-// ✅ IMPLEMENTED: Direct AWS SDK integration
-export interface QueryOptions extends Pick<QueryCommandInput, 
-  'ConsistentRead' | 'Limit' | 'ScanIndexForward' | 'ProjectionExpression' | 'ReturnConsumedCapacity'
-> {
-  // ✅ IMPLEMENTED: Native value support for pagination
-  ExclusiveStartKey?: Record<string, NativeAttributeValue>;
-}
+// Composite key (exact match)
+const post = await Post.query({ 
+  userId: 'user-123', 
+  postId: 'post-456' 
+}).exec();
 
-// ✅ IMPLEMENTED: Complete query result interface
-export interface QueryResult<T> {
-  items: T[];
-  lastEvaluatedKey?: Record<string, NativeAttributeValue>;  // Native values
-  count: number;
-  scannedCount: number;
-  consumedCapacity?: any;
-}
-
-// ✅ IMPLEMENTED: Expression interfaces for DynamoDB
-export interface ConditionExpression {
-  expression: string;
-  attributeNames: Record<string, string>;
-  attributeValues: Record<string, NativeAttributeValue>;
-}
-
-export interface DynamoDBExpression {
-  expression: string;
-  attributeNames: Record<string, string>;
-  attributeValues: Record<string, NativeAttributeValue>;
-}
+// Partial composite key
+const userPosts = await Post.query({ userId: 'user-123' }).exec();
 ```
 
-### Schema-Aware Types ✅ IMPLEMENTED
+### Condition Methods
+
+#### `where(field): Conditions`
+Add conditions to the KeyConditionExpression (typically for range key operations).
 
 ```typescript
-// ✅ IMPLEMENTED: Schema key extraction
-export type SchemaKeys<T extends z.ZodObject<any>> = keyof z.infer<T>;
+const posts = await Post.query({ userId: 'user-123' })
+  .where('createdAt').gte('2023-01-01')
+  .exec();
 
-// ✅ IMPLEMENTED: Type-aware condition operators
-export interface StringOperators<TBuilder> {
-  equals(value: string): TBuilder;
-  eq(value: string): TBuilder;
-  beginsWith(prefix: string): TBuilder;   // ✅ String-specific
-  contains(substring: string): TBuilder;  // ✅ String-specific
-  notContains(substring: string): TBuilder;
-  between(min: string, max: string): TBuilder;
-  in(values: string[]): TBuilder;
-  // ... all comparison operators
-}
-
-export interface NumberOperators<TBuilder> {
-  equals(value: number): TBuilder;
-  eq(value: number): TBuilder;
-  between(min: number, max: number): TBuilder;  // ✅ Number-specific
-  // ... no beginsWith/contains (not applicable)
-}
-
-// ✅ IMPLEMENTED: Runtime type detection in QueryBuilder
-private isStringField(fieldName: SchemaKeys<TSchema>): boolean {
-  // Checks Zod schema to determine if field is string type
-  // Returns appropriate condition class (StringQueryConditions vs QueryConditions)
-}
+const products = await Product.query({ category: 'electronics' })
+  .where('name').beginsWith('iPhone')
+  .exec();
 ```
 
-## API Design ✅ FULLY IMPLEMENTED
-
-### Fluent Interface - WORKING EXAMPLES
+#### `filter(field): FilterConditions`
+Add conditions to the FilterExpression (for non-key attributes).
 
 ```typescript
-// ✅ IMPLEMENTED: Basic hash key query with key-value map
-const users = await UserModel.query({ id: 'user123' })
+const activeUsers = await User.query({ department: 'engineering' })
   .filter('status').eq('active')
+  .filter('age').between(25, 45)
+  .exec();
+```
+
+### Available Operators
+
+#### All Field Types
+- `eq(value)` / `equals(value)` - Exact match
+- `ne(value)` / `notEquals(value)` - Not equal
+- `gt(value)` / `greaterThan(value)` - Greater than
+- `gte(value)` / `greaterThanOrEqual(value)` - Greater than or equal
+- `lt(value)` / `lessThan(value)` - Less than
+- `lte(value)` / `lessThanOrEqual(value)` - Less than or equal
+- `between(min, max)` - Range condition
+- `in(values)` - Value in array
+- `exists()` - Attribute exists
+- `notExists()` - Attribute does not exist
+
+#### String Fields Only
+- `beginsWith(prefix)` - String starts with prefix
+- `contains(substring)` - String contains substring (filter only)
+- `notContains(substring)` - String does not contain substring (filter only)
+
+### Configuration Methods
+
+#### `usingIndex(indexName): QueryBuilder`
+Query using a Global or Local Secondary Index with compile-time name validation.
+
+```typescript
+// TypeScript validates index names at compile time
+const usersByEmail = await User.query({ email: 'john@example.com' })
+  .usingIndex('EmailIndex')  // ✅ Valid index name
+  .exec();
+
+const recentPosts = await Post.query({ status: 'published' })
+  .usingIndex('StatusCreatedAtIndex')
+  .where('createdAt').gte('2023-01-01')
+  .exec();
+```
+
+#### `consistentRead(enabled?): QueryBuilder`
+Enable consistent reads (default: false).
+
+```typescript
+const user = await User.query({ id: 'user-123' })
+  .consistentRead(true)
+  .exec();
+```
+
+#### `limit(count): QueryBuilder`
+Limit the number of items returned.
+
+```typescript
+const recentPosts = await Post.query({ userId: 'user-123' })
+  .limit(10)
+  .exec();
+```
+
+#### `ascending() / descending(): QueryBuilder`
+Control sort order (applies to range key).
+
+```typescript
+const oldestPosts = await Post.query({ userId: 'user-123' })
+  .ascending()  // Sort by range key ascending
+  .exec();
+
+const newestPosts = await Post.query({ userId: 'user-123' })
+  .descending()  // Sort by range key descending
+  .exec();
+```
+
+#### `startKey(key): QueryBuilder`
+Set pagination start key for continuing from previous query.
+
+```typescript
+const nextPage = await Post.query({ userId: 'user-123' })
+  .startKey(previousResult.lastEvaluatedKey)
+  .limit(10)
+  .exec();
+```
+
+#### `returnConsumedCapacity(level): QueryBuilder`
+Return capacity consumption information.
+
+```typescript
+const result = await User.query({ department: 'engineering' })
+  .returnConsumedCapacity('TOTAL')
+  .execWithPagination();
+
+console.log('Consumed capacity:', result.consumedCapacity);
+```
+
+#### `loadAll(): QueryBuilder`
+Automatically load all pages when using `exec()`.
+
+```typescript
+const allPosts = await Post.query({ userId: 'user-123' })
+  .loadAll()  // Will automatically paginate through all results
+  .exec();
+```
+
+### Execution Methods
+
+#### `exec(): Promise<Item[]>`
+Execute the query and return items. If `loadAll()` was called, automatically paginates through all results.
+
+```typescript
+// Single page execution
+const posts = await Post.query({ userId: 'user-123' })
   .limit(10)
   .exec();
 
-// ✅ IMPLEMENTED: Composite key query (exact match)
-const product = await ProductModel.query({ 
-  productId: 'prod-1', 
-  category: 'electronics' 
-}).exec();
-
-// ✅ IMPLEMENTED: Partial composite key query with additional conditions
-const productVersions = await ProductModel.query({ productId: 'prod-1' })
-  .where('category').beginsWith('elect')  // String field gets beginsWith()
-  .filter('price').between(100, 1000)     // Number field gets between()
-  .exec();
-
-// ✅ IMPLEMENTED: Global Secondary Index query
-const activeUsers = await UserModel.query({ status: 'active' })
-  .usingIndex('StatusIndex')
-  .filter('lastLogin').gte('2023-01-01')
-  .descending()
-  .exec();
-
-// ✅ IMPLEMENTED: Paginated query
-let lastKey = undefined;
-do {
-  const result = await UserModel.query({ id: 'user123' })
-    .startKey(lastKey)                    // ✅ ExclusiveStartKey support
-    .limit(100)
-    .execWithPagination();
-  
-  processItems(result.items);
-  lastKey = result.lastEvaluatedKey;      // ✅ Native value pagination keys
-} while (lastKey);
-
-// ✅ IMPLEMENTED: Stream large result sets
-for await (const batch of UserModel.query({ status: 'active' }).stream()) {
-  console.log(`Processing ${batch.length} items`);
-  // Process each batch - yields arrays of items
-}
-
-// ✅ IMPLEMENTED: Load all results at once
-const allItems = await UserModel.query({ status: 'active' })
-  .loadAll()                              // ✅ Automatic pagination handling
-  .exec();
-
-// ✅ IMPLEMENTED: Advanced query with all features
-const complexQuery = await ProductModel.query({ productId: 'prod-1' })
-  .where('category').beginsWith('electronics')
-  .filter('price').between(100, 500)
-  .filter('inStock').eq(true)
-  .filter('tags').contains('featured')
-  .projectionExpression('productId, category, #name, price')
-  .consistentRead(true)
-  .returnConsumedCapacity('TOTAL')
-  .limit(20)
-  .ascending()
+// Load all pages automatically
+const allPosts = await Post.query({ userId: 'user-123' })
+  .loadAll()
   .exec();
 ```
 
-### Method Categories ✅ FULLY IMPLEMENTED
+#### `execWithPagination(lastKey?): Promise<QueryResult>`
+Execute the query and return detailed result with pagination information.
 
-#### 1. Query Initialization ✅
-- **`query(keyValues)`** - ✅ Initialize query with key-value pairs that generate `eq` conditions automatically
-  - `keyValues: Partial<Schema>` - Any field-value pairs from the schema
-  - All provided keys become equality conditions in `KeyConditionExpression`
-  - ✅ Works with hash-only keys: `{ id: 'user123' }`
-  - ✅ Works with composite keys: `{ productId: 'prod-1', category: 'electronics' }`
-  - ✅ Works with partial composite keys: `{ productId: 'prod-1' }`
+```typescript
+const result = await Post.query({ userId: 'user-123' })
+  .limit(10)
+  .execWithPagination();
 
-#### 2. Additional Key Conditions (WHERE) ✅
-- **`where(field)`** - ✅ Target a specific field for additional key conditions (returns type-aware condition builder)
-- ✅ **Type-aware operators**: String fields get `StringQueryConditions`, others get `QueryConditions`
-- **Available operators**:
-  - ✅ `eq(value)` / `equals(value)` - Exact match equality
-  - ✅ `gt(value)` / `greaterThan(value)`, `gte(value)` - Greater than comparisons
-  - ✅ `lt(value)` / `lessThan(value)`, `lte(value)` - Less than comparisons  
-  - ✅ `ne(value)` / `notEqual(value)` - Not equal
-  - ✅ `between(min, max)` - Range conditions
-  - ✅ `in(values)` - Value in array
-  - ✅ `exists()` / `notExists()` - Attribute existence
-  - ✅ **String-only**: `beginsWith(prefix)` - String prefix matching
+console.log('Items:', result.items);
+console.log('Count:', result.count);
+console.log('Last key:', result.lastEvaluatedKey);
+console.log('Consumed capacity:', result.consumedCapacity);
 
-#### 3. Filter Conditions (Non-Key Attributes) ✅
-- **`filter(field)`** - ✅ Target a field for filtering (goes into `FilterExpression`)
-- ✅ **All WHERE operators** plus additional filter-specific ones:
-- ✅ **String filters**: `contains(value)`, `notContains(value)`, `beginsWith(prefix)`
-- ✅ **General filters**: `contains(value)`, `notContains(value)` for any field type
-- ✅ **Type safety**: `StringFilterConditions` for strings, `FilterConditions` for others
+// Continue pagination
+const nextPage = await Post.query({ userId: 'user-123' })
+  .limit(10)
+  .execWithPagination(result.lastEvaluatedKey);
+```
 
-#### 4. Query Configuration ✅
-- ✅ `usingIndex(indexName)` - Use Global/Local Secondary Index with **full type inference**
-- ✅ `consistentRead(enabled = true)` - Enable/disable consistent reads
-- ✅ `limit(count)` - Limit result count (with validation)
-- ✅ `ascending()` / `descending()` - Sort order (sets `ScanIndexForward`)
-- ✅ `startKey(key)` - Pagination start key (`ExclusiveStartKey`)
-- ✅ `projectionExpression(expression)` - Specify attributes to return
-- ✅ `returnConsumedCapacity(level)` - Return capacity consumption info ('INDEXES' | 'TOTAL' | 'NONE')
-- ✅ `loadAll()` - Load all pages automatically (use with caution)
+#### `stream(): AsyncIterableIterator<Item[]>`
+Stream results for memory-efficient processing of large datasets.
 
-#### 5. Execution Methods ✅
-- ✅ `exec()` - Execute and return items array (uses `loadAll` if set, otherwise single page)
-- ✅ `execWithPagination(lastKey?)` - Execute and return full result with pagination info
-- ✅ `stream()` - Return `AsyncIterableIterator<T[]>` for large datasets  
-- ✅ **Result validation**: All results validated against Zod schema
-- ✅ **Error handling**: Comprehensive error messages with context
+```typescript
+for await (const batch of Post.query({ status: 'published' }).stream()) {
+  console.log(`Processing batch of ${batch.length} posts`);
+  
+  for (const post of batch) {
+    await processPost(post);
+  }
+}
+```
 
-## ✅ IMPLEMENTATION COMPLETE - SUMMARY
+## Usage Examples
 
-### What Was Successfully Implemented
+### Basic Queries
+```typescript
+// Simple hash key query
+const user = await User.query({ id: 'user-123' }).exec();
 
-1. **🎯 Complete QueryBuilder Class**
-   - Full fluent API with method chaining
-   - Type-safe field validation using Zod schemas
-   - AWS SDK v3 native value integration
+// Composite key exact match
+const post = await Post.query({ 
+  userId: 'user-123', 
+  postId: 'post-456' 
+}).exec();
 
-2. **🔧 Type-Aware Condition System**
-   - `QueryConditions` - Base condition class
-   - `StringQueryConditions` - String-specific operators (`beginsWith`, `contains`)
-   - `FilterConditions` - Filter-specific operators
-   - `StringFilterConditions` - String filters with additional methods
-   - Runtime type detection from Zod schemas
+// Partial composite key
+const userPosts = await Post.query({ userId: 'user-123' }).exec();
+```
 
-3. **⚡ Expression Building Engine**
-   - Automatic `KeyConditionExpression` generation from `query(keyValues)`
-   - Separate `FilterExpression` building for `filter()` conditions
-   - Unique value key generation (`:value_0`, `:value_1`, etc.)
-   - Attribute name escaping (`#fieldName`) for DynamoDB reserved words
+### Complex Queries
+```typescript
+// Query with filters and options
+const activePosts = await Post.query({ userId: 'user-123' })
+  .where('createdAt').gte('2023-01-01')
+  .filter('status').eq('published')
+  .filter('views').gt(100)
+  .limit(20)
+  .descending()
+  .exec();
 
-4. **🚀 Advanced Features**
-   - **Pagination**: `execWithPagination()`, `startKey()`, pagination keys with native values
-   - **Streaming**: `stream()` returns `AsyncIterableIterator<T[]>` for large datasets
-   - **Load All**: `loadAll()` automatic pagination handling
-   - **Index Support**: `usingIndex()` for GSI/LSI queries with **full type inference**
-   - **Query Options**: `limit()`, `consistentRead()`, `projectionExpression()`, `returnConsumedCapacity()`
+// String field operations
+const products = await Product.query({ category: 'electronics' })
+  .where('name').beginsWith('iPhone')
+  .filter('description').contains('wireless')
+  .exec();
+```
 
-5. **🛡️ Type Safety & Validation**
-   - Schema-based field validation (only schema fields allowed)
-   - Type-aware operator availability (strings get `beginsWith()`, numbers don't)
-   - **Index name validation**: Compile-time checking of index names using `IndexNames<TConfig>`
-   - Result validation with Zod schema parsing
-   - Comprehensive error handling with context
+### Index Queries
+```typescript
+// Global Secondary Index with type safety
+const usersByEmail = await User.query({ email: 'john@example.com' })
+  .usingIndex('EmailIndex')  // Compile-time validated
+  .exec();
 
-6. **🔗 AWS SDK v3 Integration**
-   - Direct use of `QueryCommandInput` type
-   - Native value support with `NativeAttributeValue`
-   - No manual AttributeValue conversion needed
-   - Future-proof with AWS SDK evolution
+// Index with additional conditions
+const recentActiveUsers = await User.query({ status: 'active' })
+  .usingIndex('StatusIndex')
+  .where('lastLogin').gte('2023-01-01')
+  .limit(50)
+  .exec();
+```
+
+### Pagination
+```typescript
+// Manual pagination
+let lastKey = undefined;
+const allResults = [];
+
+do {
+  const result = await Post.query({ userId: 'user-123' })
+    .startKey(lastKey)
+    .limit(100)
+    .execWithPagination();
+  
+  allResults.push(...result.items);
+  lastKey = result.lastEvaluatedKey;
+} while (lastKey);
+
+// Automatic pagination
+const allPosts = await Post.query({ userId: 'user-123' })
+  .loadAll()
+  .exec();
+```
+
+### Streaming Large Datasets
+```typescript
+// Memory-efficient processing
+for await (const batch of Post.query({ status: 'published' }).stream()) {
+  console.log(`Processing ${batch.length} posts`);
+  
+  // Process each post in the batch
+  await Promise.all(batch.map(post => processPost(post)));
+}
+```
+
+## Type Safety Features
+
+### Schema-Based Validation
+Only fields defined in your Zod schema can be queried, preventing runtime errors.
+
+```typescript
+const userSchema = z.object({
+  id: z.string(),
+  email: z.string(),
+  name: z.string(),
+  age: z.number()
+});
+
+// ✅ Valid - 'email' is in schema
+User.query({ email: 'john@example.com' });
+
+// ❌ TypeScript error - 'invalidField' not in schema
+User.query({ invalidField: 'value' });
+```
+
+### Type-Aware Operators
+String fields automatically get string-specific methods like `beginsWith()` and `contains()`.
+
+```typescript
+// String field gets string methods
+User.query({ id: 'user-123' })
+  .where('name').beginsWith('John')     // ✅ Available for string fields
+  .filter('email').contains('@gmail');  // ✅ Available for string fields
+
+// Number field gets numeric methods only
+User.query({ id: 'user-123' })
+  .filter('age').between(25, 45)        // ✅ Available for all types
+  .filter('age').beginsWith('2');       // ❌ Not available for numbers
+```
+
+### Index Name Validation
+Index names are validated at compile time using TypeScript.
+
+```typescript
+const User = factory.defineModel({
+  hashKey: 'id',
+  schema: userSchema,
+  globalSecondaryIndexes: {
+    'EmailIndex': { hashKey: 'email', projectionType: 'ALL' }
+  }
+});
+
+// ✅ Valid index name
+User.query({ email: 'test@example.com' }).usingIndex('EmailIndex');
+
+// ❌ TypeScript compile error
+User.query({ email: 'test@example.com' }).usingIndex('NonExistentIndex');
+```
 
 ### 🎯 Index Type Inference Enhancement
 
