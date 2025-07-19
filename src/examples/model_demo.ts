@@ -276,8 +276,8 @@ async function main() {
 		// Clean up tables on error
 		try {
 			console.log("\n🧹 Cleaning up tables...");
-			await tableManager.deleteTable("users").catch(() => { });
-			await tableManager.deleteTable("products").catch(() => { });
+			await tableManager.deleteTable("users").catch(() => {});
+			await tableManager.deleteTable("products").catch(() => {});
 			console.log("✅ Tables cleaned up");
 		} catch (cleanupError) {
 			console.error("Failed to clean up tables:", cleanupError);

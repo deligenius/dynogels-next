@@ -1,3 +1,1 @@
-export {
-  QueryExpressions as ScanExpressions
-} from '../query/QueryExpressions.js';
+export { QueryExpressions as ScanExpressions } from "../query/QueryExpressions.js";

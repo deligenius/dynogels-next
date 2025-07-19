@@ -1,4 +1,4 @@
 export {
-  FilterConditions,
-  StringFilterConditions
-} from '../query/QueryConditions.js';
+	FilterConditions,
+	StringFilterConditions,
+} from "../query/QueryConditions.js";
