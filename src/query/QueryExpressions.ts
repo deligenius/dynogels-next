@@ -89,8 +89,8 @@ export class QueryExpressions {
 		value: OperatorValueMap[T],
 		existingValueKeys: string[] = [],
 	): ConditionExpression {
-		const haskKey = `#${key}` as const;
-		/** ":value_0" */
+		const keyHash = `#${key}`;
+		/* ":value_0" */
 		const colonValue = QueryExpressions.generateUniqueValueKey(
 			key,
 			existingValueKeys,
@@ -100,8 +100,8 @@ export class QueryExpressions {
 			case "=":
 			case "equals":
 				return {
-					expression: `${haskKey} = ${colonValue}`,
-					attributeNames: { [haskKey]: key },
+					expression: `${keyHash} = ${colonValue}`,
+					attributeNames: { [keyHash]: key },
 					attributeValues: {
 						[colonValue]: QueryExpressions.formatValue(value),
 					},
@@ -110,8 +110,8 @@ export class QueryExpressions {
 			case "<>":
 			case "ne":
 				return {
-					expression: `${haskKey} <> ${colonValue}`,
-					attributeNames: { [haskKey]: key },
+					expression: `${keyHash} <> ${colonValue}`,
+					attributeNames: { [keyHash]: key },
 					attributeValues: {
 						[colonValue]: QueryExpressions.formatValue(value),
 					},
@@ -120,8 +120,8 @@ export class QueryExpressions {
 			case "<":
 			case "lt":
 				return {
-					expression: `${haskKey} < ${colonValue}`,
-					attributeNames: { [haskKey]: key },
+					expression: `${keyHash} < ${colonValue}`,
+					attributeNames: { [keyHash]: key },
 					attributeValues: {
 						[colonValue]: QueryExpressions.formatValue(value),
 					},
@@ -130,8 +130,8 @@ export class QueryExpressions {
 			case "<=":
 			case "lte":
 				return {
-					expression: `${haskKey} <= ${colonValue}`,
-					attributeNames: { [haskKey]: key },
+					expression: `${keyHash} <= ${colonValue}`,
+					attributeNames: { [keyHash]: key },
 					attributeValues: {
 						[colonValue]: QueryExpressions.formatValue(value),
 					},
@@ -140,8 +140,8 @@ export class QueryExpressions {
 			case ">":
 			case "gt":
 				return {
-					expression: `${haskKey} > ${colonValue}`,
-					attributeNames: { [haskKey]: key },
+					expression: `${keyHash} > ${colonValue}`,
+					attributeNames: { [keyHash]: key },
 					attributeValues: {
 						[colonValue]: QueryExpressions.formatValue(value),
 					},
@@ -150,8 +150,8 @@ export class QueryExpressions {
 			case ">=":
 			case "gte":
 				return {
-					expression: `${haskKey} >= ${colonValue}`,
-					attributeNames: { [haskKey]: key },
+					expression: `${keyHash} >= ${colonValue}`,
+					attributeNames: { [keyHash]: key },
 					attributeValues: {
 						[colonValue]: QueryExpressions.formatValue(value),
 					},
@@ -176,8 +176,8 @@ export class QueryExpressions {
 					existingValueKeys,
 				);
 				return {
-					expression: `${haskKey} BETWEEN ${attributeValue1} AND ${attributeValue2}`,
-					attributeNames: { [haskKey]: key },
+					expression: `${keyHash} BETWEEN ${attributeValue1} AND ${attributeValue2}`,
+					attributeNames: { [keyHash]: key },
 					attributeValues: {
 						[attributeValue1]: QueryExpressions.formatValue(min),
 						[attributeValue2]: QueryExpressions.formatValue(max),
@@ -187,8 +187,8 @@ export class QueryExpressions {
 			case "begins_with":
 			case "beginswith":
 				return {
-					expression: `begins_with(${haskKey}, ${colonValue})`,
-					attributeNames: { [haskKey]: key },
+					expression: `begins_with(${keyHash}, ${colonValue})`,
+					attributeNames: { [keyHash]: key },
 					attributeValues: {
 						[colonValue]: QueryExpressions.formatValue(value),
 					},
@@ -196,8 +196,8 @@ export class QueryExpressions {
 
 			case "contains":
 				return {
-					expression: `contains(${haskKey}, ${colonValue})`,
-					attributeNames: { [haskKey]: key },
+					expression: `contains(${keyHash}, ${colonValue})`,
+					attributeNames: { [keyHash]: key },
 					attributeValues: {
 						[colonValue]: QueryExpressions.formatValue(value),
 					},
@@ -206,8 +206,8 @@ export class QueryExpressions {
 			case "not contains":
 			case "notcontains":
 				return {
-					expression: `NOT contains(${haskKey}, ${colonValue})`,
-					attributeNames: { [haskKey]: key },
+					expression: `NOT contains(${keyHash}, ${colonValue})`,
+					attributeNames: { [keyHash]: key },
 					attributeValues: {
 						[colonValue]: QueryExpressions.formatValue(value),
 					},
@@ -230,24 +230,24 @@ export class QueryExpressions {
 					attributeValues[key] = QueryExpressions.formatValue(value[index]);
 				});
 				return {
-					expression: `${haskKey} IN (${valueKeys.join(", ")})`,
-					attributeNames: { [haskKey]: key },
+					expression: `${keyHash} IN (${valueKeys.join(", ")})`,
+					attributeNames: { [keyHash]: key },
 					attributeValues,
 				};
 
 			case "attribute_exists":
 			case "exists":
 				return {
-					expression: `attribute_exists(${haskKey})`,
-					attributeNames: { [haskKey]: key },
+					expression: `attribute_exists(${keyHash})`,
+					attributeNames: { [keyHash]: key },
 					attributeValues: {},
 				};
 
 			case "attribute_not_exists":
 			case "notexists":
 				return {
-					expression: `attribute_not_exists(${haskKey})`,
-					attributeNames: { [haskKey]: key },
+					expression: `attribute_not_exists(${keyHash})`,
+					attributeNames: { [keyHash]: key },
 					attributeValues: {},
 				};
 

@@ -1,29 +1,24 @@
-import type {
-	DynamoDBDocument,
-	NativeAttributeValue,
-	QueryCommandInput,
-} from "@aws-sdk/lib-dynamodb";
-import { z } from "zod";
-import type { IndexNames, ModelConfig } from "../types/Model.js";
+import type { DynamoDBDocument, NativeAttributeValue, QueryCommandInput } from '@aws-sdk/lib-dynamodb';
+import { z } from 'zod';
+import type { ModelConfig } from '../types/Model.js';
 import type {
 	ConditionExpression,
 	QueryOptions,
 	QueryResult,
-	SchemaFieldNames,
-} from "../types/Query.js";
+	SchemaKeys
+} from '../types/Query.js';
 import {
-	type FilterConditions,
-	type QueryConditions,
+	FilterConditions,
+	QueryConditions,
 	StringFilterConditions,
-	StringQueryConditions,
-} from "./QueryConditions.js";
-import { QueryExpressions } from "./QueryExpressions.js";
+	StringQueryConditions
+} from './QueryConditions.js';
+import { QueryExpressions } from './QueryExpressions.js';
 
 export class QueryBuilder<
 	TSchema extends z.ZodObject<any>,
 	THashKey extends keyof z.infer<TSchema>,
-	TRangeKey extends keyof z.infer<TSchema> | undefined = undefined,
-	TConfig extends ModelConfig<TSchema> = ModelConfig<TSchema>,
+	TRangeKey extends keyof z.infer<TSchema> | undefined = undefined
 > {
 	private keyConditions: ConditionExpression[] = [];
 	private filterConditions: ConditionExpression[] = [];
@@ -33,48 +28,69 @@ export class QueryBuilder<
 
 	constructor(
 		private readonly client: DynamoDBDocument,
-		private readonly config: TConfig,
-		private readonly keyValues: Partial<z.infer<TSchema>>,
+		private readonly config: ModelConfig<TSchema> & {
+			hashKey: THashKey;
+			rangeKey?: TRangeKey;
+		},
+		private readonly keyValues: Partial<z.infer<TSchema>>
 	) { }
 
-	where<TField extends SchemaFieldNames<TSchema>>(
+	where<TField extends SchemaKeys<TSchema>>(
 		fieldName: TField
-	): StringQueryConditions<TSchema, TField, this> & QueryConditions<TSchema, TField, this> {
+	): z.infer<TSchema>[TField] extends string
+		? StringQueryConditions<TSchema, TField, QueryBuilder<TSchema, THashKey, TRangeKey>>
+		: QueryConditions<TSchema, TField, QueryBuilder<TSchema, THashKey, TRangeKey>> {
+
 		const existingKeys = this.getExistingValueKeys();
 		const addCondition = (condition: ConditionExpression) => {
 			this.keyConditions.push(condition);
 			return this;
 		};
 
-		// Always return StringQueryConditions which extends QueryConditions
-		// This ensures all methods are available regardless of field type
-		return new StringQueryConditions(
+		if (this.isStringField(fieldName)) {
+			return new StringQueryConditions(
+				String(fieldName),
+				addCondition,
+				existingKeys
+			) as any;
+		}
+
+		return new QueryConditions(
 			String(fieldName),
 			addCondition,
-			existingKeys,
-		) as StringQueryConditions<TSchema, TField, this> & QueryConditions<TSchema, TField, this>;
+			existingKeys
+		) as any;
 	}
 
-	filter<TField extends SchemaFieldNames<TSchema>>(
+	filter<TField extends SchemaKeys<TSchema>>(
 		fieldName: TField
-	): StringFilterConditions<TSchema, TField, this> & FilterConditions<TSchema, TField, this> {
+	): z.infer<TSchema>[TField] extends string
+		? StringFilterConditions<TSchema, TField, QueryBuilder<TSchema, THashKey, TRangeKey>>
+		: FilterConditions<TSchema, TField, QueryBuilder<TSchema, THashKey, TRangeKey>> {
+
 		const existingKeys = this.getExistingValueKeys();
 		const addCondition = (condition: ConditionExpression) => {
 			this.filterConditions.push(condition);
 			return this;
 		};
 
-		// Always return StringFilterConditions which extends FilterConditions
-		// This ensures all methods are available regardless of field type
-		return new StringFilterConditions(
+		if (this.isStringField(fieldName)) {
+			return new StringFilterConditions(
+				String(fieldName),
+				addCondition,
+				existingKeys
+			) as any;
+		}
+
+		return new FilterConditions(
 			String(fieldName),
 			addCondition,
-			existingKeys,
-		) as StringFilterConditions<TSchema, TField, this> & FilterConditions<TSchema, TField, this>;
+			existingKeys
+		) as any;
 	}
 
-	usingIndex(indexName: IndexNames<TConfig>): this {
-		this.indexName = indexName as string;
+	usingIndex(indexName: string): this {
+		this.indexName = indexName;
 		return this;
 	}
 
@@ -85,7 +101,7 @@ export class QueryBuilder<
 
 	limit(count: number): this {
 		if (count <= 0) {
-			throw new Error("Limit must be greater than 0");
+			throw new Error('Limit must be greater than 0');
 		}
 		this.options.Limit = count;
 		return this;
@@ -106,7 +122,12 @@ export class QueryBuilder<
 		return this;
 	}
 
-	returnConsumedCapacity(level: "INDEXES" | "TOTAL" | "NONE" = "NONE"): this {
+	projectionExpression(expression: string): this {
+		this.options.ProjectionExpression = expression;
+		return this;
+	}
+
+	returnConsumedCapacity(level: 'INDEXES' | 'TOTAL' | 'NONE' = 'NONE'): this {
 		this.options.ReturnConsumedCapacity = level;
 		return this;
 	}
@@ -125,9 +146,7 @@ export class QueryBuilder<
 		return result.items;
 	}
 
-	async execWithPagination(
-		lastEvaluatedKey?: Record<string, any>,
-	): Promise<QueryResult<z.infer<TSchema>>> {
+	async execWithPagination(lastEvaluatedKey?: Record<string, any>): Promise<QueryResult<z.infer<TSchema>>> {
 		const request = this.buildRequest();
 
 		if (lastEvaluatedKey) {
@@ -137,8 +156,8 @@ export class QueryBuilder<
 		try {
 			const response = await this.client.query(request);
 
-			const items = (response.Items || []).map((item) =>
-				this.validateAndTransform(item),
+			const items = (response.Items || []).map(item =>
+				this.validateAndTransform(item)
 			);
 
 			return {
@@ -146,12 +165,10 @@ export class QueryBuilder<
 				lastEvaluatedKey: response.LastEvaluatedKey,
 				count: response.Count || 0,
 				scannedCount: response.ScannedCount || 0,
-				consumedCapacity: response.ConsumedCapacity,
+				consumedCapacity: response.ConsumedCapacity
 			};
 		} catch (error) {
-			throw new Error(
-				`Query failed: ${error instanceof Error ? error.message : "Unknown error"}`,
-			);
+			throw new Error(`Query failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
 		}
 	}
 
@@ -171,7 +188,7 @@ export class QueryBuilder<
 		const allItems: z.infer<TSchema>[] = [];
 
 		for await (const items of this.stream()) {
-			allItems.push(items);
+			allItems.push(...items);
 		}
 
 		return allItems;
@@ -180,7 +197,7 @@ export class QueryBuilder<
 	private buildRequest(): QueryCommandInput {
 		// Start with properly typed base request
 		const request: QueryCommandInput = {
-			TableName: this.config.tableName,
+			TableName: this.config.tableName
 		};
 
 		// Apply options with proper property names
@@ -211,43 +228,38 @@ export class QueryBuilder<
 		const keyConditions = this.buildKeyConditions();
 		const allKeyConditions = [...keyConditions, ...this.keyConditions];
 
-		const keyConditionExpression =
-			QueryExpressions.buildExpression(allKeyConditions);
+		const keyConditionExpression = QueryExpressions.buildExpression(allKeyConditions);
 
 		//*Step 1: create key condition expression
 		if (keyConditionExpression.expression) {
 			request.KeyConditionExpression = keyConditionExpression.expression;
 
 			if (Object.keys(keyConditionExpression.attributeNames).length > 0) {
-				request.ExpressionAttributeNames =
-					keyConditionExpression.attributeNames;
+				request.ExpressionAttributeNames = keyConditionExpression.attributeNames;
 			}
 
 			if (Object.keys(keyConditionExpression.attributeValues).length > 0) {
-				request.ExpressionAttributeValues =
-					keyConditionExpression.attributeValues;
+				request.ExpressionAttributeValues = keyConditionExpression.attributeValues;
 			}
 		}
 
 		//*Step 2: create filter expression
 		if (this.filterConditions.length > 0) {
-			const filterExpression = QueryExpressions.buildExpression(
-				this.filterConditions,
-			);
+			const filterExpression = QueryExpressions.buildExpression(this.filterConditions);
 			if (filterExpression.expression) {
 				request.FilterExpression = filterExpression.expression;
 
 				if (Object.keys(filterExpression.attributeNames).length > 0) {
 					request.ExpressionAttributeNames = {
 						...request.ExpressionAttributeNames,
-						...filterExpression.attributeNames,
+						...filterExpression.attributeNames
 					};
 				}
 
 				if (Object.keys(filterExpression.attributeValues).length > 0) {
 					request.ExpressionAttributeValues = {
 						...request.ExpressionAttributeValues,
-						...filterExpression.attributeValues,
+						...filterExpression.attributeValues
 					};
 				}
 			}
@@ -263,52 +275,43 @@ export class QueryBuilder<
 		// Generate eq conditions for all provided key values
 		for (const [fieldName, value] of Object.entries(this.keyValues)) {
 			if (value !== undefined) {
-				conditions.push(
-					QueryExpressions.createCondition(
-						fieldName,
-						"=",
-						value as NativeAttributeValue,
-						existingKeys,
-					),
-				);
+				conditions.push(QueryExpressions.createCondition(
+					fieldName,
+					'=',
+					value as NativeAttributeValue,
+					existingKeys
+				));
 			}
 		}
 
 		return conditions;
 	}
 
-	/**
-	 * Returns all currently used value keys from both key conditions and filter expressions.
-	 *
-	 * This method extracts all attribute value keys (like `:value_0`, `:name_1`, `:age_between_min`)
-	 * that are already in use across all conditions. It's used to avoid conflicts when generating
-	 * new unique value keys for additional conditions.
-	 *
-	 * @returns Array of existing value keys used in expressions
-	 *
-	 * @example
-	 * ```typescript
-	 * // After building query with conditions:
-	 * // .query({ id: 'user-1' })           // Uses :id
-	 * // .filter('name').eq('John')         // Uses :name_0
-	 * // .filter('age').between(18, 65)     // Uses :age_between_min, :age_between_max
-	 *
-	 * const existingKeys = this.getExistingValueKeys();
-	 * // Returns: [':id', ':name_0', ':age_between_min', ':age_between_max']
-	 *
-	 * // Next condition will avoid these keys and use :status_0, :status_1, etc.
-	 * ```
-	 */
+
 	private getExistingValueKeys(): string[] {
 		const keyExpr = QueryExpressions.buildExpression(this.keyConditions);
 		const filterExpr = QueryExpressions.buildExpression(this.filterConditions);
 
 		return [
 			...Object.keys(keyExpr.attributeValues),
-			...Object.keys(filterExpr.attributeValues),
+			...Object.keys(filterExpr.attributeValues)
 		];
 	}
 
+	private isStringField(fieldName: SchemaKeys<TSchema>): boolean {
+		try {
+			const schemaShape = this.config.schema.shape as z.ZodObject<any>;
+			const field = schemaShape[fieldName as keyof typeof schemaShape];
+
+			if (!field || typeof field._def !== 'object') {
+				return false;
+			}
+
+			return field._def.typeName === 'ZodString';
+		} catch {
+			return false;
+		}
+	}
 
 	private validateAndTransform(item: any): z.infer<TSchema> {
 		try {
@@ -316,7 +319,7 @@ export class QueryBuilder<
 		} catch (error) {
 			if (error instanceof z.ZodError) {
 				throw new Error(
-					`Validation failed: ${error.issues.map((i) => i.message).join(", ")}`,
+					`Validation failed: ${error.issues.map(i => i.message).join(', ')}`
 				);
 			}
 			throw error;
