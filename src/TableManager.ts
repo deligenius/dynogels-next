@@ -30,6 +30,22 @@ export interface GSIStatusReport {
 }
 
 export class TableManager {
+	static instance: TableManager;
+
+	static async initialize(client: DynamoDBClient) {
+		if (!TableManager.instance) {
+			TableManager.instance = new TableManager(client);
+		}
+		return TableManager.instance;
+	}
+
+	static getInstance() {
+		if (!TableManager.instance) {
+			throw new Error("TableManager not initialized");
+		}
+		return TableManager.instance;
+	}
+
 	constructor(private readonly client: DynamoDBClient) {}
 
 	async createTable<TSchema extends z.ZodObject<any>>(
