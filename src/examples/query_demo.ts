@@ -247,6 +247,7 @@ async function main() {
 		// Partial key query (hash key only)
 		console.log("\n📝 Partial key query (hash key only):");
 		const postQuery2 = await Post.query({ userId: "user1" }).exec();
+		Post.query
 		console.log(
 			`Found ${postQuery2.length} post(s) for user1:`,
 			postQuery2.map((p) => ({ postId: p.postId, title: p.title })),
@@ -258,8 +259,8 @@ async function main() {
 		// String beginsWith
 		console.log("\n📝 String beginsWith():");
 		const postQuery3 = await Post.query({ userId: "user1" })
-			.where("postId")
-			.beginsWith("post")
+			.where("userId")
+			.beginsWith("user1")
 			.exec();
 		console.log(
 			`Posts with postId beginning with 'post':`,

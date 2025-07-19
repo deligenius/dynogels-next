@@ -11,34 +11,37 @@ import type {
 } from "./types/Model.js";
 
 type PrimaryKey<
-	TSchema extends z.ZodObject<any>,
-	THashKey extends keyof z.infer<TSchema>,
-	TRangeKey extends keyof z.infer<TSchema> | undefined = undefined,
-> = TRangeKey extends keyof z.infer<TSchema>
+	T extends Record<string, any>,
+	HashKey extends keyof T,
+	RangeKey extends keyof T | undefined = undefined,
+> = RangeKey extends keyof T
 	? {
-			[K in THashKey]: z.infer<TSchema>[K];
-		} & {
-			[K in TRangeKey]: z.infer<TSchema>[K];
-		}
+		[K in HashKey]: T[K];
+	} & {
+		[K in RangeKey]: T[K];
+	}
 	: {
-			[K in THashKey]: z.infer<TSchema>[K];
-		};
+		[K in HashKey]: T[K];
+	};
 
 export class Model<
-	TSchema extends z.ZodObject<any>,
-	THashKey extends keyof z.infer<TSchema>,
-	TRangeKey extends keyof z.infer<TSchema> | undefined = undefined,
-	TConfig extends ModelConfig<TSchema> = ModelConfig<TSchema>,
+	Schema extends z.ZodObject<any>,
+	SchemaType extends z.infer<Schema>,
+	HashKey extends keyof SchemaType,
+	RangeKey extends keyof SchemaType | undefined = undefined
 > {
 	constructor(
 		private readonly client: DynamoDBDocument,
-		public readonly config: TConfig,
-	) {}
+		public readonly config: ModelConfig<Schema> & {
+			hashKey: HashKey;
+			rangeKey?: RangeKey;
+		}
+	) { }
 
 	async get(
-		key: PrimaryKey<TSchema, THashKey, TRangeKey>,
+		key: PrimaryKey<SchemaType, HashKey, RangeKey>,
 		options: ModelOptions = {},
-	): Promise<z.infer<TSchema> | null> {
+	): Promise<SchemaType | null> {
 		const result = await this.client.get({
 			TableName: this.config.tableName,
 			Key: key,
@@ -53,15 +56,15 @@ export class Model<
 	}
 
 	async create(
-		item: Omit<z.infer<TSchema>, "createdAt" | "updatedAt">,
-	): Promise<z.infer<TSchema>> {
+		item: Omit<SchemaType, "createdAt" | "updatedAt">,
+	): Promise<SchemaType> {
 		const now = new Date().toISOString();
 		const timestamps = this.getTimestamps(now, now);
 
 		const itemToSave = {
 			...item,
 			...timestamps,
-		} as z.infer<TSchema>;
+		} as z.infer<Schema>;
 
 		const validatedItem = this.validateAndTransform(itemToSave);
 
@@ -75,9 +78,9 @@ export class Model<
 	}
 
 	async update(
-		key: PrimaryKey<TSchema, THashKey, TRangeKey>,
-		updates: UpdateInput<z.infer<TSchema>>,
-	): Promise<z.infer<TSchema>> {
+		key: PrimaryKey<SchemaType, HashKey, RangeKey>,
+		updates: UpdateInput<SchemaType>,
+	): Promise<SchemaType> {
 		const existingItem = await this.get(key, { consistentRead: true });
 		if (!existingItem) {
 			throw new ItemNotFoundError(
@@ -92,7 +95,7 @@ export class Model<
 			...existingItem,
 			...updates,
 			...timestamps,
-		} as z.infer<TSchema>;
+		} as z.infer<Schema>;
 
 		const validatedItem = this.validateAndTransform(updatedItem);
 
@@ -105,20 +108,20 @@ export class Model<
 	}
 
 	async getMany(
-		keys: PrimaryKey<TSchema, THashKey, TRangeKey>[],
+		keys: PrimaryKey<SchemaType, HashKey, RangeKey>[],
 		options: ModelOptions = {},
-	): Promise<z.infer<TSchema>[]> {
+	): Promise<SchemaType[]> {
 		if (keys.length === 0) {
 			return [];
 		}
 
 		// DynamoDB BatchGetItem has a limit of 100 items per request
-		const batches: PrimaryKey<TSchema, THashKey, TRangeKey>[][] = [];
+		const batches: PrimaryKey<SchemaType, HashKey, RangeKey>[][] = [];
 		for (let i = 0; i < keys.length; i += 100) {
 			batches.push(keys.slice(i, i + 100));
 		}
 
-		const results: z.infer<TSchema>[] = [];
+		const results: SchemaType[] = [];
 
 		const batchResults = await Promise.all(
 			batches.map((batch) =>
@@ -147,7 +150,7 @@ export class Model<
 
 	async destroy(
 		key: any, // Will be properly typed by the factory
-	): Promise<z.infer<TSchema> | null> {
+	): Promise<z.infer<Schema> | null> {
 		const result = await this.client.delete({
 			TableName: this.config.tableName,
 			Key: key,
@@ -161,9 +164,9 @@ export class Model<
 		return this.validateAndTransform(result.Attributes);
 	}
 
-	private validateAndTransform(item: any): z.infer<TSchema> {
+	private validateAndTransform(item: any): SchemaType {
 		try {
-			return this.config.schema.parse(item);
+			return this.config.schema.parse(item) as SchemaType;
 		} catch (error) {
 			if (error instanceof z.ZodError) {
 				throw new ValidationError(
@@ -175,18 +178,18 @@ export class Model<
 	}
 
 	query(
-		keyValues: Partial<z.infer<TSchema>>,
-	): QueryBuilder<TSchema, THashKey, TRangeKey, TConfig> {
-		return new QueryBuilder<TSchema, THashKey, TRangeKey, TConfig>(
+		keyValues: Partial<SchemaType>,
+	): QueryBuilder<Schema, SchemaType, HashKey, RangeKey> {
+		return new QueryBuilder(
 			this.client,
 			this.config,
 			keyValues,
 		);
 	}
 
-	scan(): ScanBuilder<TSchema, TConfig> {
-		return new ScanBuilder<TSchema, TConfig>(this.client, this.config);
-	}
+	// scan(): ScanBuilder<TSchema> {
+	// 	return new ScanBuilder(this.client, this.config);
+	// }
 
 	private getTimestamps(createdAt?: string, updatedAt?: string) {
 		const timestamps: { createdAt?: string; updatedAt?: string } = {};

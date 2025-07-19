@@ -16,9 +16,10 @@ import {
 import { QueryExpressions } from './QueryExpressions.js';
 
 export class QueryBuilder<
-	TSchema extends z.ZodObject<any>,
-	THashKey extends keyof z.infer<TSchema>,
-	TRangeKey extends keyof z.infer<TSchema> | undefined = undefined
+	Schema extends z.ZodObject<any>,
+	SchemaType extends z.infer<Schema>,
+	HashKey extends keyof SchemaType,
+	RangeKey extends keyof SchemaType | undefined = undefined
 > {
 	private keyConditions: ConditionExpression[] = [];
 	private filterConditions: ConditionExpression[] = [];
@@ -28,18 +29,18 @@ export class QueryBuilder<
 
 	constructor(
 		private readonly client: DynamoDBDocument,
-		private readonly config: ModelConfig<TSchema> & {
-			hashKey: THashKey;
-			rangeKey?: TRangeKey;
+		private readonly config: ModelConfig<Schema> & {
+			hashKey: HashKey;
+			rangeKey?: RangeKey;
 		},
-		private readonly keyValues: Partial<z.infer<TSchema>>
+		private readonly keyValues: Partial<z.infer<Schema>>
 	) { }
 
-	where<TField extends SchemaKeys<TSchema>>(
+	where<TField extends keyof SchemaType>(
 		fieldName: TField
-	): z.infer<TSchema>[TField] extends string
-		? StringQueryConditions<TSchema, TField, QueryBuilder<TSchema, THashKey, TRangeKey>>
-		: QueryConditions<TSchema, TField, QueryBuilder<TSchema, THashKey, TRangeKey>> {
+	): SchemaType[TField] extends string
+		? StringQueryConditions<Schema, SchemaType, TField, this>
+		: QueryConditions<Schema, SchemaType, TField, this> {
 
 		const existingKeys = this.getExistingValueKeys();
 		const addCondition = (condition: ConditionExpression) => {
@@ -62,11 +63,11 @@ export class QueryBuilder<
 		) as any;
 	}
 
-	filter<TField extends SchemaKeys<TSchema>>(
+	filter<TField extends keyof SchemaType>(
 		fieldName: TField
-	): z.infer<TSchema>[TField] extends string
-		? StringFilterConditions<TSchema, TField, QueryBuilder<TSchema, THashKey, TRangeKey>>
-		: FilterConditions<TSchema, TField, QueryBuilder<TSchema, THashKey, TRangeKey>> {
+	): SchemaType[TField] extends string
+		? StringFilterConditions<Schema, SchemaType, TField, this>
+		: FilterConditions<Schema, SchemaType, TField, this> {
 
 		const existingKeys = this.getExistingValueKeys();
 		const addCondition = (condition: ConditionExpression) => {
@@ -137,7 +138,7 @@ export class QueryBuilder<
 		return this;
 	}
 
-	async exec(): Promise<z.infer<TSchema>[]> {
+	async exec(): Promise<z.infer<Schema>[]> {
 		if (this.isLoadAll) {
 			return this.execLoadAll();
 		}
@@ -146,7 +147,7 @@ export class QueryBuilder<
 		return result.items;
 	}
 
-	async execWithPagination(lastEvaluatedKey?: Record<string, any>): Promise<QueryResult<z.infer<TSchema>>> {
+	async execWithPagination(lastEvaluatedKey?: Record<string, any>): Promise<QueryResult<z.infer<Schema>>> {
 		const request = this.buildRequest();
 
 		if (lastEvaluatedKey) {
@@ -172,7 +173,7 @@ export class QueryBuilder<
 		}
 	}
 
-	async *stream(): AsyncIterableIterator<z.infer<TSchema>[]> {
+	async *stream(): AsyncIterableIterator<z.infer<Schema>[]> {
 		let lastEvaluatedKey = this.options.ExclusiveStartKey;
 
 		do {
@@ -184,8 +185,8 @@ export class QueryBuilder<
 		} while (lastEvaluatedKey);
 	}
 
-	private async execLoadAll(): Promise<z.infer<TSchema>[]> {
-		const allItems: z.infer<TSchema>[] = [];
+	private async execLoadAll(): Promise<z.infer<Schema>[]> {
+		const allItems: z.infer<Schema>[] = [];
 
 		for await (const items of this.stream()) {
 			allItems.push(...items);
@@ -298,7 +299,7 @@ export class QueryBuilder<
 		];
 	}
 
-	private isStringField(fieldName: SchemaKeys<TSchema>): boolean {
+	private isStringField(fieldName: keyof SchemaType): boolean {
 		try {
 			const schemaShape = this.config.schema.shape as z.ZodObject<any>;
 			const field = schemaShape[fieldName as keyof typeof schemaShape];
@@ -313,7 +314,7 @@ export class QueryBuilder<
 		}
 	}
 
-	private validateAndTransform(item: any): z.infer<TSchema> {
+	private validateAndTransform(item: any): z.infer<Schema> {
 		try {
 			return this.config.schema.parse(item);
 		} catch (error) {

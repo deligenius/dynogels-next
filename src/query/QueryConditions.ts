@@ -1,28 +1,29 @@
 import type { z } from 'zod';
-import type { 
+import type {
   ConditionExpression,
-  ConditionOperators, 
-  FilterOperators, 
+  ConditionOperators,
+  FilterOperators,
   SchemaKeys
 } from '../types/Query.js';
 import { QueryExpressions } from './QueryExpressions.js';
 
 export class QueryConditions<
   TSchema extends z.ZodObject<any>,
-  TField extends SchemaKeys<TSchema>,
+  TSchemaType extends z.infer<TSchema>,
+  TField extends keyof TSchemaType,
   TBuilder
 > {
   constructor(
     protected readonly fieldName: string,
     protected readonly addCondition: (condition: ConditionExpression) => TBuilder,
     protected readonly existingValueKeys: string[] = []
-  ) {}
+  ) { }
 
   equals(value: z.infer<TSchema>[TField]): TBuilder {
     const condition = QueryExpressions.createCondition(
-      this.fieldName, 
-      '=', 
-      value, 
+      this.fieldName,
+      '=',
+      value,
       this.existingValueKeys
     );
     return this.addCondition(condition);
@@ -34,9 +35,9 @@ export class QueryConditions<
 
   ne(value: z.infer<TSchema>[TField]): TBuilder {
     const condition = QueryExpressions.createCondition(
-      this.fieldName, 
-      '<>', 
-      value, 
+      this.fieldName,
+      '<>',
+      value,
       this.existingValueKeys
     );
     return this.addCondition(condition);
@@ -44,9 +45,9 @@ export class QueryConditions<
 
   lt(value: z.infer<TSchema>[TField]): TBuilder {
     const condition = QueryExpressions.createCondition(
-      this.fieldName, 
-      '<', 
-      value, 
+      this.fieldName,
+      '<',
+      value,
       this.existingValueKeys
     );
     return this.addCondition(condition);
@@ -54,9 +55,9 @@ export class QueryConditions<
 
   lte(value: z.infer<TSchema>[TField]): TBuilder {
     const condition = QueryExpressions.createCondition(
-      this.fieldName, 
-      '<=', 
-      value, 
+      this.fieldName,
+      '<=',
+      value,
       this.existingValueKeys
     );
     return this.addCondition(condition);
@@ -64,9 +65,9 @@ export class QueryConditions<
 
   gt(value: z.infer<TSchema>[TField]): TBuilder {
     const condition = QueryExpressions.createCondition(
-      this.fieldName, 
-      '>', 
-      value, 
+      this.fieldName,
+      '>',
+      value,
       this.existingValueKeys
     );
     return this.addCondition(condition);
@@ -74,9 +75,9 @@ export class QueryConditions<
 
   gte(value: z.infer<TSchema>[TField]): TBuilder {
     const condition = QueryExpressions.createCondition(
-      this.fieldName, 
-      '>=', 
-      value, 
+      this.fieldName,
+      '>=',
+      value,
       this.existingValueKeys
     );
     return this.addCondition(condition);
@@ -105,9 +106,9 @@ export class QueryConditions<
 
   between(min: z.infer<TSchema>[TField], max: z.infer<TSchema>[TField]): TBuilder {
     const condition = QueryExpressions.createCondition(
-      this.fieldName, 
-      'between', 
-      [min, max], 
+      this.fieldName,
+      'between',
+      [min, max],
       this.existingValueKeys
     );
     return this.addCondition(condition);
@@ -115,9 +116,9 @@ export class QueryConditions<
 
   in(values: z.infer<TSchema>[TField][]): TBuilder {
     const condition = QueryExpressions.createCondition(
-      this.fieldName, 
-      'in', 
-      values, 
+      this.fieldName,
+      'in',
+      values,
       this.existingValueKeys
     );
     return this.addCondition(condition);
@@ -125,9 +126,9 @@ export class QueryConditions<
 
   exists(): TBuilder {
     const condition = QueryExpressions.createCondition(
-      this.fieldName, 
-      'attribute_exists', 
-      undefined, 
+      this.fieldName,
+      'attribute_exists',
+      undefined,
       this.existingValueKeys
     );
     return this.addCondition(condition);
@@ -135,9 +136,9 @@ export class QueryConditions<
 
   notExists(): TBuilder {
     const condition = QueryExpressions.createCondition(
-      this.fieldName, 
-      'attribute_not_exists', 
-      undefined, 
+      this.fieldName,
+      'attribute_not_exists',
+      undefined,
       this.existingValueKeys
     );
     return this.addCondition(condition);
@@ -146,15 +147,16 @@ export class QueryConditions<
 
 export class StringQueryConditions<
   TSchema extends z.ZodObject<any>,
-  TField extends SchemaKeys<TSchema>,
+  TSchemaType extends z.infer<TSchema>,
+  TField extends keyof TSchemaType,
   TBuilder
-> extends QueryConditions<TSchema, TField, TBuilder> {
-  
+> extends QueryConditions<TSchema, TSchemaType, TField, TBuilder> {
+
   beginsWith(prefix: string): TBuilder {
     const condition = QueryExpressions.createCondition(
-      this.fieldName, 
-      'begins_with', 
-      prefix, 
+      this.fieldName,
+      'begins_with',
+      prefix,
       this.existingValueKeys
     );
     return this.addCondition(condition);
@@ -162,9 +164,9 @@ export class StringQueryConditions<
 
   contains(substring: string): TBuilder {
     const condition = QueryExpressions.createCondition(
-      this.fieldName, 
-      'contains', 
-      substring, 
+      this.fieldName,
+      'contains',
+      substring,
       this.existingValueKeys
     );
     return this.addCondition(condition);
@@ -172,9 +174,9 @@ export class StringQueryConditions<
 
   notContains(substring: string): TBuilder {
     const condition = QueryExpressions.createCondition(
-      this.fieldName, 
-      'not contains', 
-      substring, 
+      this.fieldName,
+      'not contains',
+      substring,
       this.existingValueKeys
     );
     return this.addCondition(condition);
@@ -191,15 +193,16 @@ export class StringQueryConditions<
 
 export class FilterConditions<
   TSchema extends z.ZodObject<any>,
-  TField extends SchemaKeys<TSchema>,
+  TSchemaType extends z.infer<TSchema>,
+  TField extends keyof TSchemaType,
   TBuilder
-> extends QueryConditions<TSchema, TField, TBuilder> {
-  
+> extends QueryConditions<TSchema, TSchemaType, TField, TBuilder> {
+
   contains(value: any): TBuilder {
     const condition = QueryExpressions.createCondition(
-      this.fieldName, 
-      'contains', 
-      value, 
+      this.fieldName,
+      'contains',
+      value,
       this.existingValueKeys
     );
     return this.addCondition(condition);
@@ -207,9 +210,9 @@ export class FilterConditions<
 
   notContains(value: any): TBuilder {
     const condition = QueryExpressions.createCondition(
-      this.fieldName, 
-      'not contains', 
-      value, 
+      this.fieldName,
+      'not contains',
+      value,
       this.existingValueKeys
     );
     return this.addCondition(condition);
@@ -226,15 +229,16 @@ export class FilterConditions<
 
 export class StringFilterConditions<
   TSchema extends z.ZodObject<any>,
-  TField extends SchemaKeys<TSchema>,
+  TSchemaType extends z.infer<TSchema>,
+  TField extends keyof TSchemaType,
   TBuilder
-> extends FilterConditions<TSchema, TField, TBuilder> {
-  
+> extends FilterConditions<TSchema, TSchemaType, TField, TBuilder> {
+
   beginsWith(prefix: string): TBuilder {
     const condition = QueryExpressions.createCondition(
-      this.fieldName, 
-      'begins_with', 
-      prefix, 
+      this.fieldName,
+      'begins_with',
+      prefix,
       this.existingValueKeys
     );
     return this.addCondition(condition);

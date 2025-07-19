@@ -27,8 +27,6 @@ export interface IndexInfo {
 }
 
 export interface ModelConfig<T extends z.ZodObject<any>> {
-	hashKey: keyof z.infer<T>;
-	rangeKey?: keyof z.infer<T>;
 	schema: T;
 	tableName: string;
 	timestamps?: {

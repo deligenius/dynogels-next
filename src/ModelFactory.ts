@@ -21,7 +21,7 @@ export class ModelFactory {
 			hashKey: THashKey;
 			rangeKey?: TRangeKey;
 		},
-	): Model<TSchema, THashKey, TRangeKey, TConfig> {
+	): Model<TSchema, THashKey, TRangeKey> {
 		return new Model(this.documentClient, config);
 	}
 }
