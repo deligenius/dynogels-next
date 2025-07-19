@@ -1,20 +1,17 @@
-# CLAUDE.md - TypeScript Implementation
+# CLAUDE.md
 
-This file provides guidance to Claude Code when working with the new TypeScript implementation of dynogels-next located in the `lib_new/` directory.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
 
-This is the modern TypeScript rewrite of dynogels, a DynamoDB data mapper for Node.js. This implementation represents the future direction of the project with modern TypeScript patterns, AWS SDK v3, and ESM modules.
+Dynogels Next is a modern TypeScript DynamoDB data mapper for Node.js built with AWS SDK v3, Zod schema validation, and comprehensive type safety. This represents a complete rewrite with modern TypeScript patterns, ESM modules, and Promise-first architecture.
 
 ## Build and Test Commands
-
-All commands should be run from the `lib_new/` directory:
 
 ### Development
 - `npm run build` - Compile TypeScript to JavaScript (outputs to `dist/`)
 - `npm run dev` - Run TypeScript compiler in watch mode
 - `npm start` - Start the demo application using tsx
-- `tsx src/app.ts` - Run the demo application directly
 
 ### Testing
 - `npm test` - Run all tests with Vitest
@@ -70,6 +67,22 @@ All commands should be run from the `lib_new/` directory:
   - Native value support (no manual AttributeValue conversion)
   - Comprehensive operator support (eq, gt, lt, between, in, contains, beginsWith, exists, etc.)
 
+#### ScanBuilder (`src/scan/ScanBuilder.ts`)
+- **Purpose**: Fluent API for building DynamoDB table scans with type-safe filtering
+- **Key Methods**:
+  - `filter(fieldName)` - Add filter conditions (all conditions go into FilterExpression)
+  - `limit(count)` - Limit number of items returned per page
+  - `segments(segment, totalSegments)` - Configure parallel scanning for large tables
+  - `consistentRead(enabled?)` - Enable/disable consistent reads
+  - `exec()` - Execute scan and return items array
+  - `execWithPagination(lastKey?)` - Execute with pagination support
+  - `stream()` - Stream results for memory-efficient processing (planned)
+- **Features**:
+  - Same type-safe operators as QueryBuilder (eq, gt, between, contains, etc.)
+  - Parallel scanning support for better performance on large tables
+  - Schema validation with Zod integration
+  - AWS SDK v3 native value support
+
 #### TableManager (`src/TableManager.ts`)
 - **Purpose**: Handles DynamoDB table lifecycle operations
 - **Key Methods**:
@@ -77,6 +90,21 @@ All commands should be run from the `lib_new/` directory:
   - `deleteTable(tableName)` - Delete table
   - `tableExists(tableName)` - Check if table exists
   - `waitForTable(tableName, state)` - Wait for table to reach desired state
+
+### Core Design Principles
+
+This project follows specific design principles that guide all architectural decisions:
+
+1. **Promise-First Architecture**: All database operations return Promises without callback support
+2. **TypeScript-First Development**: Built with TypeScript from the ground up with comprehensive type safety
+3. **Modern Schema Validation**: Uses Zod for runtime schema validation with better TypeScript integration
+4. **AWS SDK v3 Integration**: Built on AWS SDK v3 with modular imports and native Promise support
+5. **Minimal API Surface**: Clean, focused API covering essential DynamoDB operations
+6. **Immutable Operations**: Operations don't mutate input parameters, returning new instances
+7. **Explicit Error Handling**: All errors thrown as exceptions with try-catch blocks
+8. **Performance by Default**: Optimized for performance without sacrificing developer experience
+9. **Testability First**: Designed for easy testing and mocking with dependency injection
+10. **Zero Configuration Defaults**: Sensible defaults that work out of the box
 
 ### Key Design Patterns
 
@@ -127,8 +155,8 @@ const User = factory.defineModel({
 - `rangeKey?` - Optional sort key field name  
 - `schema` - Zod schema for validation and typing
 - `tableName` - DynamoDB table name
-- `globalSecondaryIndexes?` - Optional GSI configuration with type-safe index names
-- `localSecondaryIndexes?` - Optional LSI configuration with type-safe index names
+- `globalSecondaryIndexes?` - Optional GSI configuration with compile-time index name validation
+- `localSecondaryIndexes?` - Optional LSI configuration with compile-time index name validation
 - `timestamps?` - Optional timestamp configuration
   - `createdAt: boolean` - Auto-add creation timestamp
   - `updatedAt: boolean` - Auto-update modification timestamp
@@ -138,6 +166,37 @@ const User = factory.defineModel({
 - Timestamps are ISO 8601 strings
 - `createdAt` set once on creation
 - `updatedAt` updated on every modification
+
+#### Global Secondary Indexes (GSI)
+- **Type-Safe Configuration**: GSI definitions with schema validation and compile-time index name checking
+- **Flexible Schema**: Support for hash-only and composite key GSIs
+- **Projection Types**: Support for 'ALL', 'KEYS_ONLY', and 'INCLUDE' projection types
+- **Query Integration**: Seamless querying using `usingIndex(indexName)` with compile-time validation
+
+```typescript
+const User = factory.defineModel({
+  hashKey: 'id',
+  schema: userSchema,
+  tableName: 'users',
+  globalSecondaryIndexes: {
+    'EmailIndex': {
+      hashKey: 'email',
+      projectionType: 'ALL'
+    },
+    'DepartmentStatusIndex': {
+      hashKey: 'department',
+      rangeKey: 'status',
+      projectionType: 'INCLUDE',
+      projectedAttributes: ['email', 'lastLogin']
+    }
+  }
+});
+
+// Compile-time validated index usage
+const usersByEmail = await User.query({ email: 'john@example.com' })
+  .usingIndex('EmailIndex')  // ✅ TypeScript validates this
+  .exec();
+```
 
 ### Architecture Details
 
@@ -346,6 +405,44 @@ const allResults = await User.query({ id: 'user-1' })
 console.log(`Found ${allResults.length} active users`);
 ```
 
+### Scanning Operations
+
+#### Basic Table Scans
+```typescript
+// Scan all items in table
+const allUsers = await User.scan().exec();
+
+// Scan with filters
+const activeUsers = await User.scan()
+  .filter('status').eq('active')
+  .filter('age').between(25, 45)
+  .exec();
+```
+
+#### Parallel Scanning for Large Tables
+```typescript
+// Divide scan across 4 segments for better performance
+const segment0 = await User.scan()
+  .segments(0, 4)
+  .filter('status').eq('active')
+  .exec();
+
+const segment1 = await User.scan()
+  .segments(1, 4)
+  .filter('status').eq('active')
+  .exec();
+
+// Or use Promise.all for concurrent scanning
+const promises = Array.from({ length: 4 }, (_, i) =>
+  User.scan()
+    .segments(i, 4)
+    .filter('status').eq('active')
+    .exec()
+);
+const results = await Promise.all(promises);
+const allResults = results.flat();
+```
+
 #### Index Queries with Type Safety
 ```typescript
 // Model with GSI configuration
@@ -411,33 +508,39 @@ const invalidQuery = await User.query({ status: 'active' })
 
 ## Important Notes
 
-- This is the **future implementation** - the main library is still in JavaScript
 - Uses **ESM modules** exclusively - no CommonJS support
 - Requires **Node.js 16+** for ESM and AWS SDK v3 compatibility
 - **AWS SDK v3** uses modular imports for smaller bundle sizes
 - **Zod schemas** provide both runtime validation AND TypeScript types
 - **Strict TypeScript** configuration ensures type safety
 - Integration tests require **DynamoDB Local** or actual AWS DynamoDB access
+- **Promise-first architecture** - no callback support
+- All operations are immutable and don't mutate input parameters
 
 ## Demo Applications
 
-### Main Demo (`src/app.ts`)
-The main demo contains a comprehensive example showing:
-- Model factory initialization
-- Table creation and management
-- All CRUD operations
-- Batch operations
+The `src/examples/` directory contains comprehensive demos showing various features:
+
+### Model Demo (`src/examples/model_demo.ts`)
+Comprehensive example showing:
+- Model factory initialization and table management
+- All CRUD operations (create, get, update, destroy)
+- Batch operations with getMany
 - Composite key handling
 - Error handling patterns
-- Graceful shutdown handling
 
-Run with: `npm start` or `tsx src/app.ts`
-
-### Query Demo (`src/query_demo.ts`)
-A focused demo showing query functionality:
+### Query Demo (`src/examples/query_demo.ts`)
+Focused demo showing query functionality:
 - Basic querying with key conditions
 - Filter operations on non-key attributes
 - Query options (limit, sort, pagination)
 - Error handling for query operations
 
-Run with: `tsx src/query_demo.ts`
+### GSI Demo (`src/examples/gsi_demo.ts`)
+Demonstrates Global Secondary Index features:
+- GSI configuration with type safety
+- Querying using different index patterns
+- Compile-time index name validation
+- Performance considerations
+
+Run any demo with: `tsx src/examples/<filename>.ts`
