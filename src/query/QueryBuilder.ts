@@ -9,11 +9,11 @@ import type {
 	ConditionExpression,
 	QueryOptions,
 	QueryResult,
-	SchemaKeys,
+	SchemaFieldNames,
 } from "../types/Query.js";
 import {
-	FilterConditions,
-	QueryConditions,
+	type FilterConditions,
+	type QueryConditions,
 	StringFilterConditions,
 	StringQueryConditions,
 } from "./QueryConditions.js";
@@ -35,58 +35,42 @@ export class QueryBuilder<
 		private readonly client: DynamoDBDocument,
 		private readonly config: TConfig,
 		private readonly keyValues: Partial<z.infer<TSchema>>,
-	) {}
+	) { }
 
-	where<TField extends SchemaKeys<TSchema>>(fieldName: TField): any {
+	where<TField extends SchemaFieldNames<TSchema>>(
+		fieldName: TField
+	): StringQueryConditions<TSchema, TField, this> & QueryConditions<TSchema, TField, this> {
 		const existingKeys = this.getExistingValueKeys();
 		const addCondition = (condition: ConditionExpression) => {
 			this.keyConditions.push(condition);
 			return this;
 		};
 
-		if (this.isStringField(fieldName)) {
-			return new StringQueryConditions(
-				String(fieldName),
-				addCondition,
-				existingKeys,
-			);
-		}
-
-		return new QueryConditions(String(fieldName), addCondition, existingKeys);
+		// Always return StringQueryConditions which extends QueryConditions
+		// This ensures all methods are available regardless of field type
+		return new StringQueryConditions(
+			String(fieldName),
+			addCondition,
+			existingKeys,
+		) as StringQueryConditions<TSchema, TField, this> & QueryConditions<TSchema, TField, this>;
 	}
 
-	filter<TField extends SchemaKeys<TSchema>>(
-		fieldName: TField,
-	): z.infer<TSchema>[TField] extends string
-		? StringFilterConditions<
-				TSchema,
-				TField,
-				QueryBuilder<TSchema, THashKey, TRangeKey>
-			>
-		: FilterConditions<
-				TSchema,
-				TField,
-				QueryBuilder<TSchema, THashKey, TRangeKey>
-			> {
+	filter<TField extends SchemaFieldNames<TSchema>>(
+		fieldName: TField
+	): StringFilterConditions<TSchema, TField, this> & FilterConditions<TSchema, TField, this> {
 		const existingKeys = this.getExistingValueKeys();
 		const addCondition = (condition: ConditionExpression) => {
 			this.filterConditions.push(condition);
 			return this;
 		};
 
-		if (this.isStringField(fieldName)) {
-			return new StringFilterConditions(
-				String(fieldName),
-				addCondition,
-				existingKeys,
-			) as any;
-		}
-
-		return new FilterConditions(
+		// Always return StringFilterConditions which extends FilterConditions
+		// This ensures all methods are available regardless of field type
+		return new StringFilterConditions(
 			String(fieldName),
 			addCondition,
 			existingKeys,
-		) as any;
+		) as StringFilterConditions<TSchema, TField, this> & FilterConditions<TSchema, TField, this>;
 	}
 
 	usingIndex(indexName: IndexNames<TConfig>): this {
@@ -325,20 +309,6 @@ export class QueryBuilder<
 		];
 	}
 
-	private isStringField(fieldName: SchemaKeys<TSchema>): boolean {
-		try {
-			const schemaShape = this.config.schema.shape;
-			const field = schemaShape[fieldName as keyof typeof schemaShape];
-
-			if (!field || typeof field._def !== "object") {
-				return false;
-			}
-
-			return field._def.typeName === "ZodString";
-		} catch {
-			return false;
-		}
-	}
 
 	private validateAndTransform(item: any): z.infer<TSchema> {
 		try {

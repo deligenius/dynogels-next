@@ -62,7 +62,13 @@ export interface DynamoDBExpression {
 	attributeValues: Record<string, NativeAttributeValue>;
 }
 
-export type SchemaKeys<T extends z.ZodObject<any>> = keyof z.infer<T>;
+// More explicit type that helps with autocomplete
+export type SchemaKeys<T extends z.ZodObject<any>> = Extract<keyof z.infer<T>, string>;
+
+// Helper type to get schema field names with better autocomplete support
+export type SchemaFieldNames<T extends z.ZodObject<any>> = {
+	[K in keyof z.infer<T>]: K extends string ? K : never;
+}[keyof z.infer<T>];
 
 // Type-safe value type that matches NativeAttributeValue but with better inference
 export type TypedNativeValue<T> = T extends string

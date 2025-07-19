@@ -3,13 +3,13 @@ import type {
 	ConditionExpression,
 	ConditionOperators,
 	FilterOperators,
-	SchemaKeys,
+	SchemaFieldNames,
 } from "../types/Query.js";
 import { QueryExpressions } from "./QueryExpressions.js";
 
 export class QueryConditions<
 	TSchema extends z.ZodObject<any>,
-	TField extends SchemaKeys<TSchema>,
+	TField extends SchemaFieldNames<TSchema>,
 	TBuilder,
 > {
 	constructor(
@@ -151,7 +151,7 @@ export class QueryConditions<
 
 export class StringQueryConditions<
 	TSchema extends z.ZodObject<any>,
-	TField extends SchemaKeys<TSchema>,
+	TField extends SchemaFieldNames<TSchema>,
 	TBuilder,
 > extends QueryConditions<TSchema, TField, TBuilder> {
 	beginsWith(prefix: string): TBuilder {
@@ -195,7 +195,7 @@ export class StringQueryConditions<
 
 export class FilterConditions<
 	TSchema extends z.ZodObject<any>,
-	TField extends SchemaKeys<TSchema>,
+	TField extends SchemaFieldNames<TSchema>,
 	TBuilder,
 > extends QueryConditions<TSchema, TField, TBuilder> {
 	contains(value: any): TBuilder {
@@ -229,7 +229,7 @@ export class FilterConditions<
 
 export class StringFilterConditions<
 	TSchema extends z.ZodObject<any>,
-	TField extends SchemaKeys<TSchema>,
+	TField extends SchemaFieldNames<TSchema>,
 	TBuilder,
 > extends FilterConditions<TSchema, TField, TBuilder> {
 	beginsWith(prefix: string): TBuilder {

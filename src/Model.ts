@@ -2,6 +2,7 @@ import type { DynamoDBDocument } from "@aws-sdk/lib-dynamodb";
 import { z } from "zod";
 import { ItemNotFoundError, ValidationError } from "./errors/DynamoDBError.js";
 import { QueryBuilder } from "./query/QueryBuilder.js";
+import { ScanBuilder } from "./scan/ScanBuilder.js";
 import type {
 	IndexInfo,
 	ModelConfig,
@@ -181,6 +182,10 @@ export class Model<
 			this.config,
 			keyValues,
 		);
+	}
+
+	scan(): ScanBuilder<TSchema, TConfig> {
+		return new ScanBuilder<TSchema, TConfig>(this.client, this.config);
 	}
 
 	private getTimestamps(createdAt?: string, updatedAt?: string) {
